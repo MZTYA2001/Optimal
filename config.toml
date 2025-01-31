@@ -1,0 +1,7 @@
+[theme]
+base = "dark"  # or "light" for light mode
+font = "sans serif"
+
+[server]
+# Hide the footer
+footerVisibility = "hidden"
