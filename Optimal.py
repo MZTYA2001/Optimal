@@ -558,30 +558,38 @@ def create_chat_response(question, context=None, memory=None):
         buttons = interaction_buttons[language]
         
         # تحضير السياق والذاكرة
+        context_text = ""
         if memory and memory.buffer_as_messages:
             # إضافة السياق السابق من الذاكرة
             previous_messages = memory.buffer_as_messages[-2:]  # آخر سؤال وجواب
             context_text = "Previous conversation:\n"
             for msg in previous_messages:
                 context_text += f"{msg.type}: {msg.content}\n"
-            
-            if context and context.get("references"):
-                context_text += "\nCurrent context:\n" + "\n".join([
-                    f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-                    for ref in context.get("references", [])
-                ])
-        else:
-            context_text = "\n".join([
+        
+        if context and context.get("references"):
+            context_text += "\nCurrent context:\n" + "\n".join([
                 f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-                for ref in context.get("references", []) if context
+                for ref in context.get("references", [])
             ])
+        
+        # إعداد الرسائل للنموذج
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
+        ]
         
         # إنشاء الإجابة
         response = llm.invoke(messages)
         
         # تجهيز المراجع
+        references_text = ""
         references_html = ""
         if context and context.get("references"):
+            references_text = "\n\nPage References:\n" + "\n".join([
+                f"• Page {ref['page']}"
+                for ref in context["references"]
+            ])
+            
             refs_title = "المراجع:" if language == "العربية" else "References:"
             references_html = f"""
             <div class="page-references">
@@ -606,22 +614,14 @@ def create_chat_response(question, context=None, memory=None):
         function handleLike(button) {{
             const buttonsContainer = button.parentElement;
             const dislikeButton = buttonsContainer.querySelector('.btn-dislike');
-            
-            // إزالة التنشيط من زر عدم الإعجاب
             dislikeButton.classList.remove('active');
-            
-            // تبديل حالة زر الإعجاب
             button.classList.toggle('active');
         }}
         
         function handleDislike(button) {{
             const buttonsContainer = button.parentElement;
             const likeButton = buttonsContainer.querySelector('.btn-like');
-            
-            // إزالة التنشيط من زر الإعجاب
             likeButton.classList.remove('active');
-            
-            // تبديل حالة زر عدم الإعجاب
             button.classList.toggle('active');
         }}
         
@@ -630,7 +630,7 @@ def create_chat_response(question, context=None, memory=None):
             navigator.clipboard.writeText(textToCopy).then(() => {{
                 button.classList.add('active');
                 const originalText = button.textContent;
-                button.textContent = language === 'العربية' ? '✓ تم النسخ' : '✓ Copied';
+                button.textContent = '{language == "العربية" ? "✓ تم النسخ" : "✓ Copied"}';
                 setTimeout(() => {{
                     button.classList.remove('active');
                     button.textContent = originalText;
