@@ -470,38 +470,31 @@ def create_chat_response(query, context, memory, language):
 
 def display_references(refs):
     """عرض المراجع والصور من ملفات PDF"""
-    if refs and isinstance(refs, dict) and "references" in refs:
-        page_info = []
-        for ref in refs["references"]:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+    # تحويل المراجع إلى تنسيق موحد
+    references = []
+    if isinstance(refs, dict) and "references" in refs:
+        references = refs["references"]
     elif isinstance(refs, list):
-        page_info = []
-        for ref in refs:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
+        references = refs
 
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+    # جمع أرقام الصفحات الفريدة
+    page_info = []
+    for ref in references:
+        if "page" in ref and ref["page"] is not None:
+            page_info.append(ref["page"])
+
+    # عرض الصفحات الفريدة فقط
+    if page_info:
+        unique_pages = sorted(set(page_info))
+        with st.expander(UI_TEXTS[interface_language]["page_references"]):
+            cols = st.columns(2)
+            for idx, page_num in enumerate(unique_pages):
+                col_idx = idx % 2
+                with cols[col_idx]:
+                    screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
+                    if screenshots:
+                        st.image(screenshots[0], use_container_width=True)
+                        st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
 
 def display_chat_message(message, with_refs=False):
     """عرض رسالة المحادثة"""
