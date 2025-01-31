@@ -716,6 +716,38 @@ def process_user_input(user_input, is_first_message=False):
     except Exception as e:
         st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
+def handle_user_input():
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if "buttons_html" in message:
+                st.components.v1.html(message["buttons_html"], height=100)
+
+    if user_input := st.chat_input("اكتب سؤالك هنا..."):
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+            
+        with st.chat_message("assistant"):
+            response = create_chat_response(
+                user_input,
+                get_relevant_context(user_input),
+                st.session_state.chat_history[st.session_state.current_chat_id]['memory']
+            )
+            
+            st.markdown(response["answer"])
+            if "buttons_html" in response:
+                st.components.v1.html(response["buttons_html"], height=100)
+            
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response["answer"],
+                "buttons_html": response.get("buttons_html", "")
+            })
+
 # Main area for chat interface
 # Use columns to display logo and title side by side
 col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
@@ -785,26 +817,7 @@ for message in st.session_state.messages:
         display_chat_message(message)
 
 # حقل إدخال النص
-human_input = st.chat_input(UI_TEXTS[interface_language]['input_placeholder'])
-
-# معالجة الإدخال النصي
-if human_input:
-    user_message = {"role": "user", "content": human_input}
-    st.session_state.messages.append(user_message)
-    
-    # تحديث عنوان المحادثة وإظهار الإجابة إذا كانت أول رسالة
-    is_first_message = len(st.session_state.messages) == 1
-    if is_first_message:
-        st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
-    
-    # تحديث سجل المحادثة
-    st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-    
-    # عرض رسالة المستخدم
-    display_chat_message(user_message)
-    
-    # معالجة السؤال وإظهار الإجابة
-    process_user_input(human_input, is_first_message)
+handle_user_input()
 
 # معالجة الإدخال الصوتي
 if voice_input:
