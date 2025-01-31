@@ -426,14 +426,16 @@ def create_chat_response(question, context=None, memory=None):
     # تحديد لغة السؤال
     language = detect_language(question)
     
-    # تحضير رسالة النظام حسب اللغة
-    system_prompts = {
-        "العربية": "أنت مساعد ذكي متخصص في السلامة المهنية. يجب أن تجيب باللغة العربية فقط. استخدم المعلومات من السياق المقدم.",
-        "English": "You are an intelligent assistant specialized in occupational safety. You must respond in English only. Use information from the provided context."
-    }
-    
-    # إعداد رسالة النظام
-    system_prompt = system_prompts[language]
+    # بناء المطالبة العامة مع دعم اللغتين
+    system_prompt = """You are a specialized assistant that answers using only the file content.
+    - Detect the question language and respond in the same language (Arabic/English)
+    - Use only the information present in the provided context
+    - Do not provide any information not found in the file
+    - Do not use any external knowledge or alternative suggestions
+    - If the question is outside the file content scope, respond with:
+      - For Arabic: "عذراً، هذا السؤال خارج نطاق محتوى الملف"
+      - For English: "Sorry, this question is outside the scope of the file content"
+    - When asked for more information, use only the content available in the context"""
     
     # التحقق من وضوح السؤال
     unclear_question = False
@@ -529,24 +531,6 @@ _Note: The more specific your question, the better we can help you._
         ])
     
     # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
-    if language == "العربية":
-        system_prompt = """أنت مساعد متخصص يجيب فقط باستخدام المحتوى الموجود في الملف.
-        - استخدم فقط المعلومات الموجودة في السياق المقدم.
-        - لا تقدم أي معلومات غير موجودة في الملف.
-        - لا تستخدم أي معرفة خارجية أو اقتراحات بديلة.
-        -يمكنك الاجابة باللغة الانجليزية كذلك
-        - إذا كان السؤال خارج نطاق محتوى الملف، قل فقط: "عذراً، هذا السؤال خارج نطاق محتوى الملف."
-        - عند طلب المزيد من المعلومات، استخدم فقط المحتوى المتوفر في السياق."""
-    else:
-        system_prompt = """You are a specialized assistant that only answers using the file content.
-        - Use only the information present in the provided context.
-        - Do not provide any information not found in the file.
-        - Do not use any external knowledge or alternative suggestions.
-        - You can also answer in Arabic.
-        - If the question is outside the file content scope, only say: "Sorry, this question is outside the scope of the file content."
-        - When asked for more information, use only the content available in the context."""
-
-    # إرسال السياق والسؤال
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
@@ -556,13 +540,26 @@ _Note: The more specific your question, the better we can help you._
         # إنشاء الإجابة باستخدام Groq
         response = llm.invoke(messages)
         
+        # التحقق من إذا كان الجواب يشير إلى أن السؤال خارج النطاق
+        out_of_scope_responses = {
+            "عذراً، هذا السؤال خارج نطاق محتوى الملف",
+            "Sorry, this question is outside the scope of the file content"
+        }
+        
         # تحديث الذاكرة
         if memory:
             memory.save_context(
                 {"input": question},
                 {"output": response.content}
             )
-
+        
+        # إذا كان الجواب يشير إلى أن السؤال خارج النطاق، لا نعرض المراجع
+        if response.content.strip() in out_of_scope_responses:
+            return {
+                "answer": response.content,
+                "references": []
+            }
+        
         return {
             "answer": response.content,
             "references": context.get("references", [])
