@@ -611,6 +611,8 @@ def create_chat_response(question, context=None, memory=None):
         </div>
         {references_html}
         <script>
+        const currentLanguage = "{language}";
+        
         function handleLike(button) {{
             const buttonsContainer = button.parentElement;
             const dislikeButton = buttonsContainer.querySelector('.btn-dislike');
@@ -630,7 +632,7 @@ def create_chat_response(question, context=None, memory=None):
             navigator.clipboard.writeText(textToCopy).then(() => {{
                 button.classList.add('active');
                 const originalText = button.textContent;
-                button.textContent = '{language == "العربية" ? "✓ تم النسخ" : "✓ Copied"}';
+                button.textContent = currentLanguage === 'العربية' ? '✓ تم النسخ' : '✓ Copied';
                 setTimeout(() => {{
                     button.classList.remove('active');
                     button.textContent = originalText;
