@@ -417,24 +417,32 @@ def create_chat_response(query, context, memory, language):
     if unclear_question:
         unclear_message = {
             "العربية": """
-الرجاء طرح سؤال محدد من محتوى الملف. على سبيل المثال:
+❓ نحتاج إلى مزيد من التفاصيل!
 
-• "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
+🔍 يرجى طرح سؤال محدد يتعلق بمحتوى الملف.
 
-• "ما هو نظام تصريح العمل (PTW)؟"
+📝 أمثلة على الأسئلة المناسبة:
 
-• "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
+✨ "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
+✨ "ما هو نظام تصريح العمل (PTW)؟"
+✨ "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
+
+💡 كلما كان سؤالك أكثر تحديداً، كلما كان بإمكاننا تقديم إجابة أفضل!
 """,
             "English": """
-Please provide a specific question from the file content.
+❓ We Need More Details!
 
-Examples:
+🔍 Please provide a specific question related to the file content.
 
-• "What are the safety procedures for working at height?"
+📝 Here are some examples of good questions:
 
-• "What is the Permit to Work (PTW) system?"
+✨ "What are the safety procedures for working at height?"
 
-• "What are the safety requirements for confined space work?"
+✨ "What is the Permit to Work (PTW) system?"
+
+✨ "What are the safety requirements for confined space work?"
+
+💡 The more specific your question, the better we can help you!
 """
         }
         return {
