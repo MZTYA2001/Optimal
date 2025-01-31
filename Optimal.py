@@ -415,59 +415,25 @@ def detect_language(text):
         return "العربية"
     return "English"
 
-def normalize_safety_terms(question, language):
-    """
-    تحويل المصطلحات العامية والمرادفات إلى المصطلحات القياسية
-    """
-    safety_terms = {
-        "العربية": {
-            # Confined Space
-            "مكان ضيق": "confined space",
-            "اماكن ضيقة": "confined space",
-            "الاماكن الضيقة": "confined space",
-            "مساحة محصورة": "confined space",
-            "مساحات محصورة": "confined space",
-            # Working at Height
-            "مكان مرتفع": "working at height",
-            "اماكن مرتفعة": "working at height",
-            "الاماكن المرتفعة": "working at height",
-            "ارتفاعات": "working at height",
-            # PTW
-            "تصريح العمل": "permit to work",
-            "تصاريح العمل": "permit to work",
-            "نظام تصريح": "permit to work"
-        },
-        "English": {
-            "tight space": "confined space",
-            "enclosed space": "confined space",
-            "restricted space": "confined space",
-            "high place": "working at height",
-            "elevated area": "working at height",
-            "work permit": "permit to work",
-            "ptw": "permit to work"
-        }
-    }
-    
-    # تحويل السؤال إلى أحرف صغيرة للمطابقة
-    question_lower = question.lower()
-    
-    # البحث عن المصطلحات وتبديلها
-    for term, standard in safety_terms[language].items():
-        if term.lower() in question_lower:
-            question = question + f" ({standard})"
-            break
-    
-    return question
-
 def create_chat_response(question, context=None, memory=None):
     """
     إنشاء رد على سؤال المستخدم
+    Args:
+        question (str): سؤال المستخدم
+        context (dict, optional): السياق المستخدم للإجابة
+        memory (Memory, optional): كائن الذاكرة لحفظ المحادثة
     """
     # تحديد لغة السؤال
     language = detect_language(question)
     
-    # تحويل المصطلحات العامية إلى المصطلحات القياسية
-    normalized_question = normalize_safety_terms(question, language)
+    # تحضير رسالة النظام حسب اللغة
+    system_prompts = {
+        "العربية": "أنت مساعد ذكي متخصص في السلامة المهنية. يجب أن تجيب باللغة العربية فقط. استخدم المعلومات من السياق المقدم.",
+        "English": "You are an intelligent assistant specialized in occupational safety. You must respond in English only. Use information from the provided context."
+    }
+    
+    # إعداد رسالة النظام
+    system_prompt = system_prompts[language]
     
     # التحقق من وضوح السؤال
     unclear_question = False
@@ -568,6 +534,7 @@ _Note: The more specific your question, the better we can help you._
         - استخدم فقط المعلومات الموجودة في السياق المقدم.
         - لا تقدم أي معلومات غير موجودة في الملف.
         - لا تستخدم أي معرفة خارجية أو اقتراحات بديلة.
+        -يمكنك الاجابة باللغة الانجليزية كذلك
         - إذا كان السؤال خارج نطاق محتوى الملف، قل فقط: "عذراً، هذا السؤال خارج نطاق محتوى الملف."
         - عند طلب المزيد من المعلومات، استخدم فقط المحتوى المتوفر في السياق."""
     else:
@@ -575,13 +542,14 @@ _Note: The more specific your question, the better we can help you._
         - Use only the information present in the provided context.
         - Do not provide any information not found in the file.
         - Do not use any external knowledge or alternative suggestions.
+        - You can also answer in Arabic.
         - If the question is outside the file content scope, only say: "Sorry, this question is outside the scope of the file content."
         - When asked for more information, use only the content available in the context."""
 
     # إرسال السياق والسؤال
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {normalized_question}"}
+        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
     ]
 
     try:
@@ -591,7 +559,7 @@ _Note: The more specific your question, the better we can help you._
         # تحديث الذاكرة
         if memory:
             memory.save_context(
-                {"input": normalized_question},
+                {"input": question},
                 {"output": response.content}
             )
 
