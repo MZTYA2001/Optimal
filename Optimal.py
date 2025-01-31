@@ -492,16 +492,13 @@ def process_user_input(user_input, is_first_message=False):
         # تحضير السياق من الملفات PDF
         context = get_relevant_context(query=user_input)
         
-        # إنشاء الإجابة باستخدام OpenAI
+        # إنشاء الإجابة باستخدام Groq
         response = create_chat_response(
             user_input,
             context,
             st.session_state.memory,
             interface_language
         )
-        
-        # عرض الإجابة مع المراجع فوراً
-        display_response_with_references(response, response["answer"])
         
         # إضافة الإجابة إلى سجل المحادثة
         assistant_message = {
@@ -512,6 +509,14 @@ def process_user_input(user_input, is_first_message=False):
         st.session_state.messages.append(assistant_message)
         st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
         
+        # عرض الإجابة مع المراجع فوراً
+        if not any(phrase in response["answer"].lower() for phrase in negative_phrases):
+            st.chat_message("assistant").markdown(response["answer"])
+            if response.get("references"):
+                display_references(response)
+        else:
+            st.chat_message("assistant").markdown(response["answer"])
+        
         # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة
         if is_first_message:
             st.rerun()
@@ -519,48 +524,23 @@ def process_user_input(user_input, is_first_message=False):
     except Exception as e:
         st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
-def display_references(refs):
-    """عرض المراجع والصور من ملفات PDF"""
-    if refs and isinstance(refs, dict) and "references" in refs:
-        page_info = []
-        for ref in refs["references"]:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
-
 def display_chat_message(message, with_refs=False):
     """عرض رسالة المحادثة"""
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message)
+        if with_refs and "references" in message and message.get("references"):
+            display_references(message.get("references"))
 
 def display_response_with_references(response, answer):
     """عرض الإجابة مع المراجع"""
     if not any(phrase in answer.lower() for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": answer,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
+        # عرض الإجابة والمراجع
+        st.chat_message("assistant").markdown(answer)
+        if response.get("references"):
+            display_references(response)
     else:
         # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": answer
-        })
+        st.chat_message("assistant").markdown(answer)
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
