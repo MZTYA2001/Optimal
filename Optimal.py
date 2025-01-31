@@ -1,19 +1,11 @@
 import os
 import streamlit as st
-from langchain_groq import ChatGroq
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.memory import ConversationBufferMemory
-from langchain.schema import Document
-from langchain.prompts import PromptTemplate
-from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
-import fitz  # PyMuPDF for capturing screenshots
-import pdfplumber  # For searching text in PDF
-from datetime import datetime, timedelta
+from langchain.chat_models import ChatGroq
 import uuid
 import re
+import base64
+from datetime import datetime, timedelta
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -211,7 +203,18 @@ with st.sidebar:
         os.environ["GOOGLE_API_KEY"] = google_api_key
 
         # Initialize ChatGroq with the provided Groq API key
-        llm = ChatGroq(groq_api_key=groq_api_key, model_name="gemma2-9b-it")
+        llm = ChatGroq(
+            temperature=0,
+            api_key=groq_api_key,
+            model_name="mixtral-8x7b-32768"
+        )
+
+        # تعريف المسارات
+        PDF_DIR = "pdfs"
+        PDF_IMAGES_DIR = os.path.join(PDF_DIR, "images")
+
+        # التأكد من وجود المجلدات
+        os.makedirs(PDF_IMAGES_DIR, exist_ok=True)
 
         # تعريف القالب الأساسي للدردشة
         def create_chat_prompt():
@@ -378,32 +381,51 @@ def extract_complete_sentences(text, max_length=200):
             
     return ' '.join(complete_text)
 
-def get_relevant_context(query, retriever=None):
-    """الحصول على السياق المناسب من الملفات PDF"""
+def get_context(question, num_pages=3):
+    """
+    الحصول على السياق المناسب للسؤال
+    Args:
+        question (str): سؤال المستخدم
+        num_pages (int): عدد الصفحات المراد إرجاعها
+    Returns:
+        dict: قاموس يحتوي على المراجع المناسبة
+    """
     try:
-        if retriever is None and "vectors" in st.session_state:
-            retriever = st.session_state.vectors.as_retriever()
-            
-        if retriever:
-            # البحث عن المستندات ذات الصلة
-            docs = retriever.get_relevant_documents(query)
-            
-            # تنظيم السياق
-            organized_context = []
-            for doc in docs:
-                organized_context.append({
-                    "content": doc.page_content,
-                    "page": doc.metadata.get("page", None),
-                    "source": doc.metadata.get("source", None)
-                })
-            
-            return {"references": organized_context}
+        # استخدام نموذج التشابه للعثور على أفضل الصفحات
+        results = embeddings_search(question)
         
-        return {"references": []}
+        # تحديد أفضل الصفحات
+        top_pages = results[:num_pages] if results else []
+        
+        if not top_pages:
+            return None
             
+        references = []
+        for page in top_pages:
+            page_num = page.get('page')
+            try:
+                # قراءة صورة الصفحة
+                image_path = os.path.join(PDF_IMAGES_DIR, f'page_{page_num}.png')
+                if os.path.exists(image_path):
+                    with open(image_path, 'rb') as img_file:
+                        image_data = base64.b64encode(img_file.read()).decode('utf-8')
+                else:
+                    image_data = None
+                    
+                references.append({
+                    'page': page_num,
+                    'content': page.get('content', ''),
+                    'image': image_data
+                })
+            except Exception as e:
+                print(f"Error processing page {page_num}: {str(e)}")
+                continue
+        
+        return {"references": references} if references else None
+        
     except Exception as e:
-        st.error(f"Error getting context: {str(e)}")
-        return {"references": []}
+        print(f"Error in get_context: {str(e)}")
+        return None
 
 def detect_language(text):
     """
@@ -619,33 +641,50 @@ def create_chat_response(question, context=None, memory=None):
         references_text = ""
         references_html = ""
         if context and context.get("references"):
+            # ترتيب المراجع حسب رقم الصفحة
+            sorted_references = sorted(context["references"], key=lambda x: int(x.get('page', 0)))
+            
             references_text = "\n\nPage References:\n" + "\n".join([
                 f"• Page {ref['page']}"
-                for ref in context["references"]
+                for ref in sorted_references
             ])
             
             refs_title = "المراجع:" if language == "العربية" else "References:"
-            refs_content = "".join([
-                f'''
-                <div class="reference-item">
-                    <p>Page {ref["page"]}</p>
-                    <img src="data:image/png;base64,{ref.get('image', '')}" 
-                         alt="Page {ref['page']}" 
-                         loading="lazy"
-                         onclick="window.open(this.src)"/>
-                </div>
-                '''
-                for ref in context["references"]
-            ])
             
-            references_html = f"""
-            <div class="page-references">
-                <h4 onclick="toggleReferences(this)">{refs_title}</h4>
-                <div class="references-content">
-                    {refs_content}
+            # التأكد من وجود الصور وإنشاء HTML للمراجع
+            refs_content = ""
+            for ref in sorted_references:
+                page_num = ref.get('page', 'N/A')
+                image_data = ref.get('image', '')
+                
+                if image_data:
+                    refs_content += f'''
+                    <div class="reference-item">
+                        <p>Page {page_num}</p>
+                        <p>{ref.get('content', '')}</p>
+                        <img src="data:image/png;base64,{image_data}" 
+                             alt="Page {page_num}" 
+                             loading="lazy"
+                             onclick="window.open(this.src)"/>
+                    </div>
+                    '''
+                else:
+                    refs_content += f'''
+                    <div class="reference-item">
+                        <p>Page {page_num}</p>
+                        <p>{ref.get('content', '')}</p>
+                    </div>
+                    '''
+            
+            if refs_content:
+                references_html = f"""
+                <div class="page-references">
+                    <h4 onclick="toggleReferences(this)">{refs_title}</h4>
+                    <div class="references-content">
+                        {refs_content}
+                    </div>
                 </div>
-            </div>
-            """
+                """
         
         # إضافة أزرار التفاعل مع JavaScript للتحكم في الحالة
         buttons_html = f"""
@@ -717,7 +756,7 @@ def create_chat_response(question, context=None, memory=None):
         
         return {
             "answer": response.content,
-            "references": context.get("references", []) if context else [],
+            "references": sorted_references if context and context.get("references") else [],
             "buttons_html": buttons_html
         }
 
@@ -730,6 +769,37 @@ def create_chat_response(question, context=None, memory=None):
             "answer": error_message[language],
             "references": []
         }
+
+def embeddings_search(query):
+    """
+    البحث عن الصفحات المناسبة باستخدام التشابه النصي
+    Args:
+        query (str): النص المراد البحث عنه
+    Returns:
+        list: قائمة بالصفحات المناسبة
+    """
+    try:
+        if "vectors" not in st.session_state:
+            return []
+            
+        # استخدام FAISS للبحث
+        retriever = st.session_state.vectors.as_retriever()
+        docs = retriever.get_relevant_documents(query)
+        
+        # تنظيم النتائج
+        results = []
+        for doc in docs:
+            results.append({
+                "content": doc.page_content,
+                "page": doc.metadata.get("page", None),
+                "source": doc.metadata.get("source", None)
+            })
+            
+        return results
+        
+    except Exception as e:
+        print(f"Error in embeddings_search: {str(e)}")
+        return []
 
 def display_references(refs):
     """عرض المراجع والصور من ملفات PDF"""
@@ -781,7 +851,7 @@ def process_user_input(user_input, is_first_message=False):
     """معالجة إدخال المستخدم وإنشاء الرد"""
     try:
         # تحضير السياق من الملفات PDF
-        context = get_relevant_context(query=user_input)
+        context = get_context(user_input)
         
         # استخدام الذاكرة الخاصة بالمحادثة الحالية
         current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
@@ -839,7 +909,7 @@ def handle_user_input():
         with st.chat_message("assistant"):
             response = create_chat_response(
                 user_input,
-                get_relevant_context(user_input),
+                get_context(user_input),
                 st.session_state.chat_history[st.session_state.current_chat_id]['memory']
             )
             
