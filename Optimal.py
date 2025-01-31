@@ -59,7 +59,7 @@ UI_TEXTS = {
         "new_chat": "محادثة جديدة",
         "today": "اليوم",
         "yesterday": "أمس",
-        "previous_chats": "سجل المحادثات",
+        "previous_chats": "المحادثات السابقة",
         "welcome_message": """
         **مرحبًا!**  
         هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
@@ -81,7 +81,7 @@ UI_TEXTS = {
         "new_chat": "New Chat",
         "today": "Today",
         "yesterday": "Yesterday",
-        "previous_chats": "Chat History",
+        "previous_chats": "Previous Chats",
         "welcome_message": """
         **Welcome!**  
         This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
@@ -204,7 +204,7 @@ with st.sidebar:
         # Reset button in the sidebar
         if st.button("إعادة تعيين الدردشة" if interface_language == "العربية" else "Reset Chat"):
             st.session_state.messages = []  # Clear chat history
-            st.session_state.chat_memories = {}  # Clear chat memories
+            st.session_state.memory.clear()  # Clear memory
             st.success("تمت إعادة تعيين الدردشة بنجاح." if interface_language == "العربية" else "Chat has been reset successfully.")
             st.rerun()  # Rerun the app to reflect changes immediately
     else:
@@ -234,30 +234,18 @@ if 'current_chat_id' not in st.session_state:
     st.session_state.current_chat_id = None
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-if 'chat_memories' not in st.session_state:
-    st.session_state.chat_memories = {}
 
 def create_new_chat():
-    """إنشاء محادثة جديدة مستقلة تماماً"""
+    """إنشاء محادثة جديدة"""
     chat_id = datetime.now().strftime('%Y%m%d_%H%M%S')
     st.session_state.current_chat_id = chat_id
     st.session_state.messages = []
-    
-    # Create new memory instance for this specific chat
-    st.session_state.chat_memories[chat_id] = ConversationBufferMemory(
-        memory_key="history",
-        return_messages=True
-    )
-    
-    # Initialize chat but don't show in history until first message
     if chat_id not in st.session_state.chat_history:
         st.session_state.chat_history[chat_id] = {
             'messages': [],
             'timestamp': datetime.now(),
-            'first_message': None,  # Start with no title
-            'visible': False  # Hide from chat list initially
+            'first_message': UI_TEXTS[interface_language]['new_chat']
         }
-    st.rerun()
     return chat_id
 
 def update_chat_title(chat_id, message):
@@ -274,21 +262,7 @@ def load_chat(chat_id):
     if chat_id in st.session_state.chat_history:
         st.session_state.current_chat_id = chat_id
         st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
-        
-        # Get or create memory for this specific chat
-        if chat_id not in st.session_state.chat_memories:
-            st.session_state.chat_memories[chat_id] = ConversationBufferMemory(
-                memory_key="history",
-                return_messages=True
-            )
-            # Rebuild memory from this chat's messages
-            for msg in st.session_state.messages:
-                if msg["role"] == "user":
-                    st.session_state.chat_memories[chat_id].chat_memory.add_user_message(msg["content"])
-                elif msg["role"] == "assistant":
-                    st.session_state.chat_memories[chat_id].chat_memory.add_ai_message(msg["content"])
-        
-        st.rerun()
+        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
 
 def format_chat_title(chat):
     """تنسيق عنوان المحادثة"""
@@ -327,12 +301,10 @@ with st.sidebar:
     # Group chats by date
     chats_by_date = {}
     for chat_id, chat_data in st.session_state.chat_history.items():
-        # Only show chats that have messages and are marked as visible
-        if chat_data['visible'] and chat_data['messages']:
-            date = chat_data['timestamp'].date()
-            if date not in chats_by_date:
-                chats_by_date[date] = []
-            chats_by_date[date].append((chat_id, chat_data))
+        date = chat_data['timestamp'].date()
+        if date not in chats_by_date:
+            chats_by_date[date] = []
+        chats_by_date[date].append((chat_id, chat_data))
     
     # Display chats grouped by date
     for date in sorted(chats_by_date.keys(), reverse=True):
@@ -350,108 +322,12 @@ with st.sidebar:
             ):
                 load_chat(chat_id)
 
-def process_user_input(user_input, is_first_message=False):
-    """معالجة إدخال المستخدم وإنشاء الرد"""
-    try:
-        current_chat_id = st.session_state.current_chat_id
-        current_memory = st.session_state.chat_memories.get(current_chat_id)
-        
-        # Add user message to chat history
-        user_message = {"role": "user", "content": user_input}
-        st.session_state.messages.append(user_message)
-        
-        # If this is the first message in a chat, use it as the chat title
-        if is_first_message or (current_chat_id in st.session_state.chat_history and 
-                              not st.session_state.chat_history[current_chat_id]['messages']):
-            # Clean and truncate the message for title
-            title = user_input.strip().replace('\n', ' ')
-            title = title[:50] + '...' if len(title) > 50 else title
-            st.session_state.chat_history[current_chat_id]['first_message'] = title
-            st.session_state.chat_history[current_chat_id]['visible'] = True
-        
-        # تحضير السياق من الملفات PDF
-        context = get_relevant_context(query=user_input)
-        
-        # إنشاء الإجابة باستخدام OpenAI
-        response = create_chat_response(
-            user_input,
-            context,
-            current_memory,
-            interface_language
-        )
-        
-        # Check if the response contains any negative phrases
-        if any(phrase in response["answer"].lower() for phrase in negative_phrases):
-            # For unclear questions, only show response if it's not the first message
-            if not is_first_message:
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response["answer"]
-                }
-                st.session_state.messages.append(assistant_message)
-        else:
-            # For clear questions, show response with references
-            assistant_message = {
-                "role": "assistant",
-                "content": response["answer"],
-                "references": response.get("references", [])
-            }
-            st.session_state.messages.append(assistant_message)
-        
-        # Update chat history
-        st.session_state.chat_history[current_chat_id]['messages'] = st.session_state.messages
-        
-        # Display the response
-        display_response_with_references(response, response["answer"])
-        
-        if is_first_message:
-            st.rerun()
-            
-    except Exception as e:
-        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
-
-def display_references(refs):
-    """عرض المراجع والصور من ملفات PDF"""
-    if refs and isinstance(refs, dict) and "references" in refs:
-        page_info = []
-        for ref in refs["references"]:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
-
-def display_chat_message(message, with_refs=False):
-    """عرض رسالة المحادثة"""
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message)
-
-def display_response_with_references(response, answer):
-    """عرض الإجابة مع المراجع"""
-    if not any(phrase in answer.lower() for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": answer,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
-    else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": answer
-        })
+# Initialize memory if not already done
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(
+        memory_key="history",
+        return_messages=True
+    )
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
@@ -615,6 +491,82 @@ def create_chat_response(query, context, memory, language):
             "answer": UI_TEXTS[language]['error_response'],
             "references": []
         }
+
+def process_user_input(user_input, is_first_message=False):
+    """معالجة إدخال المستخدم وإنشاء الرد"""
+    try:
+        # تحضير السياق من الملفات PDF
+        context = get_relevant_context(query=user_input)
+        
+        # إنشاء الإجابة باستخدام OpenAI
+        response = create_chat_response(
+            user_input,
+            context,
+            st.session_state.memory,
+            interface_language
+        )
+        
+        # إضافة الإجابة إلى سجل المحادثة
+        assistant_message = {
+            "role": "assistant",
+            "content": response["answer"],
+            "references": response.get("references", [])
+        }
+        st.session_state.messages.append(assistant_message)
+        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
+        
+        # عرض الإجابة مع المراجع
+        display_response_with_references(response, response["answer"])
+        
+        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة
+        if is_first_message:
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+
+def display_references(refs):
+    """عرض المراجع والصور من ملفات PDF"""
+    if refs and isinstance(refs, dict) and "references" in refs:
+        page_info = []
+        for ref in refs["references"]:
+            if "page" in ref and ref["page"] is not None:
+                page_info.append(ref["page"])
+
+        if page_info:
+            with st.expander(UI_TEXTS[interface_language]["page_references"]):
+                cols = st.columns(2)
+                for idx, page_num in enumerate(sorted(set(page_info))):
+                    col_idx = idx % 2
+                    with cols[col_idx]:
+                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
+                        if screenshots:
+                            st.image(screenshots[0], use_container_width=True)
+                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+
+def display_chat_message(message, with_refs=False):
+    """عرض رسالة المحادثة"""
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if with_refs and "references" in message:
+            display_references(message)
+
+def display_response_with_references(response, answer):
+    """عرض الإجابة مع المراجع"""
+    if not any(phrase in answer.lower() for phrase in negative_phrases):
+        # إضافة المراجع إلى الرسالة
+        message = {
+            "role": "assistant",
+            "content": answer,
+            "references": response
+        }
+        display_chat_message(message, with_refs=True)
+    else:
+        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
+        display_chat_message({
+            "role": "assistant",
+            "content": answer
+        })
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
