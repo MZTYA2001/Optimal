@@ -7,6 +7,10 @@ import re
 import base64
 from datetime import datetime, timedelta
 from langchain_community.vectorstores import FAISS
+import fitz  # PyMuPDF
+import pdfplumber
+from PIL import Image
+import io
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -94,24 +98,61 @@ class PDFSearchAndDisplay:
         """تهيئة الكلاس"""
         self.fitz = fitz
         self.pdfplumber = pdfplumber
-
-    def capture_screenshots(self, pdf_path, pages):
-        """التقاط صور من صفحات PDF محددة"""
-        screenshots = []
+        self.current_pdf = None
+        self.current_pdf_path = None
+        self.page_images = {}
+        
+    def load_pdf(self, pdf_path):
+        """تحميل ملف PDF وتخزين الصور"""
         try:
-            doc = self.fitz.open(pdf_path)
-            for page_num, _ in pages:
-                if 0 <= page_num < len(doc):
-                    page = doc[page_num]
-                    # تحويل الصفحة إلى صورة بدقة عالية
-                    zoom = 2
-                    mat = fitz.Matrix(zoom, zoom)
-                    pix = page.get_pixmap(matrix=mat)
-                    screenshots.append(pix.tobytes())
-            doc.close()
+            self.current_pdf_path = pdf_path
+            self.current_pdf = self.fitz.open(pdf_path)
+            
+            # حفظ صور الصفحات
+            for page_num in range(len(self.current_pdf)):
+                page = self.current_pdf[page_num]
+                pix = page.get_pixmap()
+                img_path = os.path.join(PDF_IMAGES_DIR, f'page_{page_num + 1}.png')
+                pix.save(img_path)
+                
+                # تخزين الصورة في الذاكرة
+                with open(img_path, 'rb') as img_file:
+                    self.page_images[page_num + 1] = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+            return True
         except Exception as e:
-            st.error(f"{UI_TEXTS[interface_language]['error_pdf']}{str(e)}")
-        return screenshots
+            print(f"Error loading PDF: {str(e)}")
+            return False
+            
+    def get_page_image(self, page_num):
+        """الحصول على صورة صفحة معينة"""
+        return self.page_images.get(page_num)
+        
+    def search_text(self, query):
+        """البحث عن نص في الملف"""
+        results = []
+        if not self.current_pdf_path:
+            return results
+            
+        with self.pdfplumber.open(self.current_pdf_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, 1):
+                text = page.extract_text()
+                if query.lower() in text.lower():
+                    results.append({
+                        'page': page_num,
+                        'content': text,
+                        'image': self.get_page_image(page_num)
+                    })
+                    
+        return results
+        
+    def close(self):
+        """إغلاق الملف"""
+        if self.current_pdf:
+            self.current_pdf.close()
+            self.current_pdf = None
+            self.current_pdf_path = None
+            self.page_images.clear()
 
 # Initialize session state variables
 if "chat_history" not in st.session_state:
