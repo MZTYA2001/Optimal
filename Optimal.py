@@ -506,6 +506,9 @@ def process_user_input(user_input, is_first_message=False):
             interface_language
         )
         
+        # عرض الإجابة مع المراجع فوراً
+        display_response_with_references(response, response["answer"])
+        
         # إضافة الإجابة إلى سجل المحادثة
         assistant_message = {
             "role": "assistant",
@@ -514,9 +517,6 @@ def process_user_input(user_input, is_first_message=False):
         }
         st.session_state.messages.append(assistant_message)
         st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-        
-        # عرض الإجابة مع المراجع
-        display_response_with_references(response, response["answer"])
         
         # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة
         if is_first_message:
