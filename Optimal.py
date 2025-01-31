@@ -13,6 +13,7 @@ import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
 from datetime import datetime, timedelta
 import uuid
+import re
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -404,15 +405,25 @@ def get_relevant_context(query, retriever=None):
         st.error(f"Error getting context: {str(e)}")
         return {"references": []}
 
-def create_chat_response(query, context, memory, language):
-    """إنشاء رد باستخدام Groq مع التحقق من وجود سياق"""
+def detect_language(text):
+    """
+    تحديد لغة النص المدخل (عربي أو إنجليزي)
+    """
+    # تحقق من وجود حروف عربية في النص
+    arabic_chars = re.findall(r'[\u0600-\u06FF]', text)
+    if arabic_chars:
+        return "العربية"
+    return "English"
+
+def create_chat_response(question, context=None, chat_history=None):
+    """
+    إنشاء رد على سؤال المستخدم
+    """
+    # تحديد لغة السؤال
+    language = detect_language(question)
     
-    # التحقق من السؤال المتابع
-    follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
-    is_follow_up = any(phrase in query.lower() for phrase in follow_up_phrases)
-    
-    # التحقق من السؤال غير الواضح
-    unclear_question = is_follow_up and (not memory.buffer_as_messages or len(memory.buffer_as_messages) < 2)
+    # التحقق من وضوح السؤال
+    unclear_question = is_unclear_question(question)
     
     if unclear_question:
         unclear_message = {
@@ -515,7 +526,7 @@ _Note: The more specific your question, the better we can help you._
     # إرسال السياق والسؤال
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {query}"}
+        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
     ]
 
     try:
@@ -524,7 +535,7 @@ _Note: The more specific your question, the better we can help you._
         
         # تحديث الذاكرة
         memory.save_context(
-            {"input": query},
+            {"input": question},
             {"output": response.content}
         )
 
