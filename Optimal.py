@@ -412,13 +412,16 @@ def create_chat_response(query, context, memory, language):
     is_follow_up = any(phrase in query.lower() for phrase in follow_up_phrases)
     
     # إذا كان سؤال متابعة، نستخدم السياق السابق
-    if is_follow_up and memory.buffer_as_messages:
-        last_exchange = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
-        if last_exchange:
+    if is_follow_up and hasattr(memory, 'buffer_as_messages') and memory.buffer_as_messages:
+        last_messages = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
+        if len(last_messages) >= 2:
             # استخدام نفس السياق من السؤال السابق
+            last_question = last_messages[-2].content if hasattr(last_messages[-2], 'content') else str(last_messages[-2])
+            last_answer = last_messages[-1].content if hasattr(last_messages[-1], 'content') else str(last_messages[-1])
+            
             context_text = "\n".join([
-                f"Previous Question: {last_exchange[0]['content']}\n"
-                f"Previous Answer: {last_exchange[1]['content']}\n"
+                f"Previous Question: {last_question}\n"
+                f"Previous Answer: {last_answer}\n"
                 "Please provide more detailed information about this topic using the following context:\n"
             ] + [
                 f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
