@@ -415,15 +415,27 @@ def detect_language(text):
         return "العربية"
     return "English"
 
-def create_chat_response(question, context=None, chat_history=None):
+def create_chat_response(question, context=None, memory=None):
     """
     إنشاء رد على سؤال المستخدم
+    Args:
+        question (str): سؤال المستخدم
+        context (dict, optional): السياق المستخدم للإجابة
+        memory (Memory, optional): كائن الذاكرة لحفظ المحادثة
     """
     # تحديد لغة السؤال
     language = detect_language(question)
     
     # التحقق من وضوح السؤال
-    unclear_question = is_unclear_question(question)
+    unclear_question = False
+    if memory:
+        # التحقق من السؤال المتابع
+        follow_up_phrases = {
+            "العربية": ["و بعد", "شنو بعد", "اكو شي ثاني", "كمل", "زيد"],
+            "English": ["tell me more", "what else", "explain more", "give me more details", "continue"]
+        }
+        is_follow_up = any(phrase in question.lower() for phrase in follow_up_phrases[language])
+        unclear_question = is_follow_up and (not memory.buffer_as_messages or len(memory.buffer_as_messages) < 2)
     
     if unclear_question:
         unclear_message = {
@@ -464,7 +476,7 @@ _Note: The more specific your question, the better we can help you._
         }
     
     # إذا كان سؤال متابعة واضح (مع وجود سياق سابق)، نستخدم السياق السابق
-    if is_follow_up and hasattr(memory, 'buffer_as_messages') and memory.buffer_as_messages:
+    if memory and memory.buffer_as_messages and len(memory.buffer_as_messages) >= 2:
         last_messages = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
         if len(last_messages) >= 2:
             last_question = last_messages[-2].content if hasattr(last_messages[-2], 'content') else str(last_messages[-2])
@@ -534,10 +546,11 @@ _Note: The more specific your question, the better we can help you._
         response = llm.invoke(messages)
         
         # تحديث الذاكرة
-        memory.save_context(
-            {"input": question},
-            {"output": response.content}
-        )
+        if memory:
+            memory.save_context(
+                {"input": question},
+                {"output": response.content}
+            )
 
         return {
             "answer": response.content,
@@ -609,22 +622,11 @@ def process_user_input(user_input, is_first_message=False):
         # استخدام الذاكرة الخاصة بالمحادثة الحالية
         current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
         
-        # التحقق من السؤال المتابع
-        follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
-        is_follow_up = any(phrase in user_input.lower() for phrase in follow_up_phrases)
-        
-        # إذا كان سؤال متابعة، نستخدم السياق السابق
-        if is_follow_up and len(st.session_state.messages) >= 2:
-            last_context = st.session_state.chat_history[st.session_state.current_chat_id].get('last_context')
-            if last_context:
-                context = last_context
-        
         # إنشاء الإجابة باستخدام Groq
         response = create_chat_response(
             user_input,
             context,
-            current_memory,
-            interface_language
+            current_memory
         )
         
         # حفظ السياق الحالي للاستخدام في الأسئلة المتابعة
