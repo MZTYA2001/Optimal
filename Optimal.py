@@ -1,11 +1,12 @@
 import os
 import streamlit as st
 from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatGroq
+from langchain_groq import ChatGroq
 import uuid
 import re
 import base64
 from datetime import datetime, timedelta
+from langchain_community.vectorstores import FAISS
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -205,7 +206,7 @@ with st.sidebar:
         # Initialize ChatGroq with the provided Groq API key
         llm = ChatGroq(
             temperature=0,
-            api_key=groq_api_key,
+            groq_api_key=groq_api_key,
             model_name="mixtral-8x7b-32768"
         )
 
