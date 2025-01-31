@@ -421,7 +421,8 @@ def create_chat_response(query, context, memory, language):
             - "ما هو نظام تصريح العمل (PTW)؟"
             - "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
             """,
-            "English": """Please provide a specific question from the file content. For example:
+            "English": """Please provide a specific question from the file content.
+            For example:
             - "What are the safety procedures for working at height?"
             - "What is the Permit to Work (PTW) system?"
             - "What are the safety requirements for confined space work?"
