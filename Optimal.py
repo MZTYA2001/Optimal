@@ -175,7 +175,8 @@ def create_new_chat():
         'messages': [],
         'first_message': None,
         'timestamp': datetime.now(),
-        'memory': new_memory
+        'memory': new_memory,
+        'last_context': None
     }
     
     # تنظيف الذاكرة عند بدء محادثة جديدة
@@ -406,22 +407,40 @@ def get_relevant_context(query, retriever=None):
 def create_chat_response(query, context, memory, language):
     """إنشاء رد باستخدام Groq مع التحقق من وجود سياق"""
     
-    # إذا لم يكن هناك سياق من الملف، نطلب من المستخدم طرح سؤال متعلق بمحتوى الملف
-    if not context or not context.get("references", []):
-        no_context_message = {
-            "العربية": "عذراً، لا يمكنني الإجابة على هذا السؤال. الرجاء طرح سؤال يتعلق بمحتوى الملف.",
-            "English": "Sorry, I cannot answer this question. Please ask a question related to the file content."
-        }
-        return {
-            "answer": no_context_message[language],
-            "references": []
-        }
+    # التحقق من السؤال المتابع
+    follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
+    is_follow_up = any(phrase in query.lower() for phrase in follow_up_phrases)
+    
+    # إذا كان سؤال متابعة، نستخدم السياق السابق
+    if is_follow_up and memory.buffer_as_messages:
+        last_exchange = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
+        if last_exchange:
+            # استخدام نفس السياق من السؤال السابق
+            context_text = "\n".join([
+                f"Previous Question: {last_exchange[0]['content']}\n"
+                f"Previous Answer: {last_exchange[1]['content']}\n"
+                "Please provide more detailed information about this topic using the following context:\n"
+            ] + [
+                f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+                for ref in context.get("references", [])
+            ])
+    else:
+        # إذا لم يكن هناك سياق من الملف، نطلب من المستخدم طرح سؤال متعلق بمحتوى الملف
+        if not context or not context.get("references", []):
+            no_context_message = {
+                "العربية": "عذراً، لا يمكنني الإجابة على هذا السؤال. الرجاء طرح سؤال يتعلق بمحتوى الملف.",
+                "English": "Sorry, I cannot answer this question. Please ask a question related to the file content."
+            }
+            return {
+                "answer": no_context_message[language],
+                "references": []
+            }
 
-    # تحضير السياق للنموذج
-    context_text = "\n".join([
-        f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-        for ref in context.get("references", [])
-    ])
+        # تحضير السياق للنموذج
+        context_text = "\n".join([
+            f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+            for ref in context.get("references", [])
+        ])
     
     # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
     if language == "العربية":
@@ -429,15 +448,17 @@ def create_chat_response(query, context, memory, language):
         - استخدم السياق المعطى فقط للإجابة على الأسئلة.
         - لا تستخدم أي معلومات خارجية أو معرفة سابقة.
         - إذا كان السؤال خارج نطاق السياق المعطى، اطلب من المستخدم طرح سؤال يتعلق بمحتوى الملف.
-        - قدم إجابات دقيقة ومختصرة مبنية فقط على المحتوى المتوفر."""
+        - قدم إجابات دقيقة ومختصرة مبنية فقط على المحتوى المتوفر.
+        - عند طلب المزيد من المعلومات، قم بتوسيع الإجابة السابقة باستخدام السياق المتوفر."""
     else:
         system_prompt = """You are an intelligent assistant that only answers questions from the provided file content in English.
         - Use only the given context to answer questions.
         - Do not use any external information or prior knowledge.
         - If the question is outside the scope of the given context, ask the user to pose a question related to the file content.
-        - Provide accurate and concise answers based only on the available content."""
+        - Provide accurate and concise answers based only on the available content.
+        - When asked for more information, expand on the previous answer using the available context."""
 
-    # إرسال السياق والسؤال فقط، بدون المحادثة السابقة
+    # إرسال السياق والسؤال
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {query}"}
@@ -523,13 +544,26 @@ def process_user_input(user_input, is_first_message=False):
         # استخدام الذاكرة الخاصة بالمحادثة الحالية
         current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
         
+        # التحقق من السؤال المتابع
+        follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
+        is_follow_up = any(phrase in user_input.lower() for phrase in follow_up_phrases)
+        
+        # إذا كان سؤال متابعة، استخدم السياق السابق
+        if is_follow_up and len(st.session_state.messages) >= 2:
+            last_context = st.session_state.chat_history[st.session_state.current_chat_id].get('last_context')
+            if last_context:
+                context = last_context
+        
         # إنشاء الإجابة باستخدام Groq
         response = create_chat_response(
             user_input,
             context,
-            current_memory,  # استخدام الذاكرة الخاصة بالمحادثة
+            current_memory,
             interface_language
         )
+        
+        # حفظ السياق الحالي للاستخدام في الأسئلة المتابعة
+        st.session_state.chat_history[st.session_state.current_chat_id]['last_context'] = context
         
         # إضافة الإجابة إلى سجل المحادثة
         assistant_message = {
