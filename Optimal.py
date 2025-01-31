@@ -9,8 +9,8 @@ from langchain.memory import ConversationBufferMemory
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
 from streamlit_mic_recorder import speech_to_text
-import fitz
-import pdfplumber
+import fitz  # PyMuPDF for capturing screenshots
+import pdfplumber  # For searching text in PDF
 from datetime import datetime, timedelta
 import uuid
 
