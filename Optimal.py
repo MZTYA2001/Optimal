@@ -429,6 +429,7 @@ def create_chat_response(query, context, memory, language):
 Please provide a specific question from the file content.
 
 Examples:
+
 • "What are the safety procedures for working at height?"
 
 • "What is the Permit to Work (PTW) system?"
