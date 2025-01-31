@@ -160,21 +160,26 @@ def update_chat_title(chat_id, message):
         st.session_state.chat_history[chat_id]['first_message'] = title
 
 def create_new_chat():
-    """إنشاء محادثة جديدة"""
+    """إنشاء محادثة جديدة مستقلة تماماً"""
     chat_id = str(uuid.uuid4())
     st.session_state.current_chat_id = chat_id
     st.session_state.messages = []
-    # إنشاء ذاكرة جديدة لكل محادثة
+    
+    # إنشاء ذاكرة جديدة فارغة لكل محادثة
     new_memory = ConversationBufferMemory(
         memory_key="history",
         return_messages=True
     )
+    
     st.session_state.chat_history[chat_id] = {
         'messages': [],
         'first_message': None,
         'timestamp': datetime.now(),
-        'memory': new_memory  # تخزين الذاكرة مع المحادثة
+        'memory': new_memory
     }
+    
+    # تنظيف الذاكرة عند بدء محادثة جديدة
+    new_memory.clear()
 
 def load_chat(chat_id):
     """تحميل محادثة محددة"""
@@ -380,57 +385,64 @@ def get_relevant_context(query, retriever=None):
         return {"references": []}
 
 def create_chat_response(query, context, memory, language):
-    """إنشاء إجابة للمحادثة باستخدام Groq"""
-    try:
-        # تحضير السياق من المراجع
-        references_text = ""
-        if context and "references" in context:
-            for ref in context["references"]:
-                if ref["content"]:
-                    references_text += f"\n{ref['content']}"
+    """إنشاء رد باستخدام Groq مع التحقق من وجود سياق"""
+    
+    # إذا لم يكن هناك سياق من الملف، نطلب من المستخدم طرح سؤال متعلق بمحتوى الملف
+    if not context:
+        no_context_message = {
+            "العربية": "عذراً، لا يمكنني الإجابة على هذا السؤال. الرجاء طرح سؤال يتعلق بمحتوى الملف.",
+            "English": "Sorry, I cannot answer this question. Please ask a question related to the file content."
+        }
+        return {
+            "answer": no_context_message[language],
+            "references": []
+        }
 
-        # بناء الرسالة للنموذج
-        messages = []
-        
-        # إضافة السياق إذا وجد
-        if references_text:
-            messages.append({
-                "role": "system",
-                "content": f"You are a helpful assistant. Use this context to answer the question:\n{references_text}"
-            })
-        
-        # إضافة الذاكرة السابقة
-        if memory:
-            chat_history = memory.load_memory_variables({})
-            if "history" in chat_history:
-                messages.extend(chat_history["history"])
-        
-        # إضافة السؤال الحالي
-        messages.append({
-            "role": "user",
-            "content": query
-        })
-        
-        # الحصول على الإجابة من Groq
+    # تحضير السياق للنموذج
+    context_text = "\n".join([f"Content from page {ref['page']}: {ref['text']}" for ref in context])
+    
+    # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
+    if language == "العربية":
+        system_prompt = """أنت مساعد ذكي يجيب على الأسئلة باللغة العربية فقط من محتوى الملف المقدم.
+        - استخدم السياق المعطى فقط للإجابة على الأسئلة.
+        - لا تستخدم أي معلومات خارجية أو معرفة سابقة.
+        - إذا كان السؤال خارج نطاق السياق المعطى، اطلب من المستخدم طرح سؤال يتعلق بمحتوى الملف.
+        - قدم إجابات دقيقة ومختصرة مبنية فقط على المحتوى المتوفر."""
+    else:
+        system_prompt = """You are an intelligent assistant that only answers questions from the provided file content in English.
+        - Use only the given context to answer questions.
+        - Do not use any external information or prior knowledge.
+        - If the question is outside the scope of the given context, ask the user to pose a question related to the file content.
+        - Provide accurate and concise answers based only on the available content."""
+
+    # إرسال السياق والسؤال فقط، بدون المحادثة السابقة
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {query}"}
+    ]
+
+    try:
+        # إنشاء الإجابة باستخدام Groq
         response = llm.invoke(messages)
         
-        # تنظيم الإجابة
-        answer = response.content
-        
-        # إضافة الإجابة إلى الذاكرة
-        if memory:
-            memory.chat_memory.add_user_message(query)
-            memory.chat_memory.add_ai_message(answer)
-        
+        # تحديث الذاكرة
+        memory.save_context(
+            {"input": query},
+            {"output": response.content}
+        )
+
         return {
-            "answer": answer,
-            "references": context.get("references", []) if context else []
+            "answer": response.content,
+            "references": context
         }
-        
+
     except Exception as e:
-        st.error(f"Error creating response: {str(e)}")
+        error_message = {
+            "العربية": f"عذراً، حدث خطأ: {str(e)}",
+            "English": f"Sorry, an error occurred: {str(e)}"
+        }
         return {
-            "answer": UI_TEXTS[language]['error_response'],
+            "answer": error_message[language],
             "references": []
         }
 
