@@ -415,16 +415,59 @@ def detect_language(text):
         return "العربية"
     return "English"
 
+def normalize_safety_terms(question, language):
+    """
+    تحويل المصطلحات العامية والمرادفات إلى المصطلحات القياسية
+    """
+    safety_terms = {
+        "العربية": {
+            # Confined Space
+            "مكان ضيق": "confined space",
+            "اماكن ضيقة": "confined space",
+            "الاماكن الضيقة": "confined space",
+            "مساحة محصورة": "confined space",
+            "مساحات محصورة": "confined space",
+            # Working at Height
+            "مكان مرتفع": "working at height",
+            "اماكن مرتفعة": "working at height",
+            "الاماكن المرتفعة": "working at height",
+            "ارتفاعات": "working at height",
+            # PTW
+            "تصريح العمل": "permit to work",
+            "تصاريح العمل": "permit to work",
+            "نظام تصريح": "permit to work"
+        },
+        "English": {
+            "tight space": "confined space",
+            "enclosed space": "confined space",
+            "restricted space": "confined space",
+            "high place": "working at height",
+            "elevated area": "working at height",
+            "work permit": "permit to work",
+            "ptw": "permit to work"
+        }
+    }
+    
+    # تحويل السؤال إلى أحرف صغيرة للمطابقة
+    question_lower = question.lower()
+    
+    # البحث عن المصطلحات وتبديلها
+    for term, standard in safety_terms[language].items():
+        if term.lower() in question_lower:
+            question = question + f" ({standard})"
+            break
+    
+    return question
+
 def create_chat_response(question, context=None, memory=None):
     """
     إنشاء رد على سؤال المستخدم
-    Args:
-        question (str): سؤال المستخدم
-        context (dict, optional): السياق المستخدم للإجابة
-        memory (Memory, optional): كائن الذاكرة لحفظ المحادثة
     """
     # تحديد لغة السؤال
     language = detect_language(question)
+    
+    # تحويل المصطلحات العامية إلى المصطلحات القياسية
+    normalized_question = normalize_safety_terms(question, language)
     
     # التحقق من وضوح السؤال
     unclear_question = False
@@ -538,7 +581,7 @@ _Note: The more specific your question, the better we can help you._
     # إرسال السياق والسؤال
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
+        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {normalized_question}"}
     ]
 
     try:
@@ -548,7 +591,7 @@ _Note: The more specific your question, the better we can help you._
         # تحديث الذاكرة
         if memory:
             memory.save_context(
-                {"input": question},
+                {"input": normalized_question},
                 {"output": response.content}
             )
 
