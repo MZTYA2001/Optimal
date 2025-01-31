@@ -415,136 +415,157 @@ def detect_language(text):
         return "العربية"
     return "English"
 
+def get_interaction_styles():
+    """
+    إرجاع أنماط CSS للأزرار التفاعلية
+    """
+    return """
+    <style>
+    .interaction-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        flex-wrap: wrap;
+    }
+    
+    .interaction-buttons button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .btn-like {
+        background-color: #e7f5e7;
+        color: #2e7d32;
+    }
+    
+    .btn-like:hover {
+        background-color: #c8e6c9;
+    }
+    
+    .btn-dislike {
+        background-color: #fde7e7;
+        color: #c62828;
+    }
+    
+    .btn-dislike:hover {
+        background-color: #ffcdd2;
+    }
+    
+    .btn-copy {
+        background-color: #e3f2fd;
+        color: #1565c0;
+    }
+    
+    .btn-copy:hover {
+        background-color: #bbdefb;
+    }
+    
+    .btn-share {
+        background-color: #f3e5f5;
+        color: #6a1b9a;
+    }
+    
+    .btn-share:hover {
+        background-color: #e1bee7;
+    }
+    
+    @media (max-width: 600px) {
+        .interaction-buttons {
+            flex-direction: column;
+        }
+        .interaction-buttons button {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+    </style>
+    """
+
 def create_chat_response(question, context=None, memory=None):
     """
     إنشاء رد على سؤال المستخدم
-    Args:
-        question (str): سؤال المستخدم
-        context (dict, optional): السياق المستخدم للإجابة
-        memory (Memory, optional): كائن الذاكرة لحفظ المحادثة
     """
     # تحديد لغة السؤال
     language = detect_language(question)
     
-    # بناء المطالبة العامة مع دعم اللغتين
-    system_prompt = """You are a specialized assistant that answers using only the file content.
-    - Detect the question language and respond in the same language (Arabic/English)
-    - Use only the information present in the provided context
-    - Do not provide any information not found in the file
-    - Do not use any external knowledge or alternative suggestions
-    - If the question is outside the file content scope, respond with:
-      - For Arabic: "عذراً، هذا السؤال خارج نطاق محتوى الملف"
-      - For English: "Sorry, this question is outside the scope of the file content"
-    - When asked for more information, use only the content available in the context"""
-    
-    # التحقق من وضوح السؤال
-    unclear_question = False
-    if memory:
-        # التحقق من السؤال المتابع
-        follow_up_phrases = {
-            "العربية": ["و بعد", "شنو بعد", "اكو شي ثاني", "كمل", "زيد"],
-            "English": ["tell me more", "what else", "explain more", "give me more details", "continue"]
-        }
-        is_follow_up = any(phrase in question.lower() for phrase in follow_up_phrases[language])
-        unclear_question = is_follow_up and (not memory.buffer_as_messages or len(memory.buffer_as_messages) < 2)
-    
-    if unclear_question:
-        unclear_message = {
-            "العربية": """
-**نحتاج إلى مزيد من التفاصيل**
-
-يرجى طرح سؤال محدد يتعلق بمحتوى الملف.
-
-**أمثلة على الأسئلة المناسبة:**
-
-• "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
-
-• "ما هو نظام تصريح العمل (PTW)؟"
-
-• "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
-
-_ملاحظة: كلما كان سؤالك أكثر تحديداً، كلما كان بإمكاننا تقديم إجابة أفضل._
-""",
-            "English": """
-**We Need More Details**
-
-Please provide a specific question related to the file content.
-
-**Examples of good questions:**
-
-• "What are the safety procedures for working at height?"
-
-• "What is the Permit to Work (PTW) system?"
-
-• "What are the safety requirements for confined space work?"
-
-_Note: The more specific your question, the better we can help you._
-"""
-        }
-        return {
-            "answer": unclear_message[language],
-            "references": []  # لا نعرض أي مراجع للأسئلة غير الواضحة
-        }
-    
-    # إذا كان سؤال متابعة واضح (مع وجود سياق سابق)، نستخدم السياق السابق
-    if memory and memory.buffer_as_messages and len(memory.buffer_as_messages) >= 2:
-        last_messages = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
-        if len(last_messages) >= 2:
-            last_question = last_messages[-2].content if hasattr(last_messages[-2], 'content') else str(last_messages[-2])
-            last_answer = last_messages[-1].content if hasattr(last_messages[-1], 'content') else str(last_messages[-1])
-            
-            # التحقق من وجود مراجع في السياق السابق
-            if not context or not context.get("references", []):
-                out_of_scope_message = {
-                    "العربية": "عذراً، هذا السؤال خارج نطاق محتوى الملف.",
-                    "English": "Sorry, this question is outside the scope of the file content."
-                }
-                return {
-                    "answer": out_of_scope_message[language],
-                    "references": []
-                }
-            
-            context_text = "\n".join([
-                f"Previous Question: {last_question}\n"
-                f"Previous Answer: {last_answer}\n"
-                "Please provide more detailed information about this topic using the following context:\n"
-            ] + [
-                f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-                for ref in context.get("references", [])
-            ])
-    else:
-        # إذا لم يكن هناك سياق من الملف، نعتبر السؤال خارج النطاق
-        if not context or not context.get("references", []):
-            out_of_scope_message = {
-                "العربية": "عذراً، هذا السؤال خارج نطاق محتوى الملف.",
-                "English": "Sorry, this question is outside the scope of the file content."
-            }
-            return {
-                "answer": out_of_scope_message[language],
-                "references": []
-            }
-
-        # تحضير السياق للنموذج
-        context_text = "\n".join([
-            f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-            for ref in context.get("references", [])
-        ])
-    
-    # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
-    ]
-
     try:
-        # إنشاء الإجابة باستخدام Groq
         response = llm.invoke(messages)
         
-        # التحقق من إذا كان الجواب يشير إلى أن السؤال خارج النطاق
-        out_of_scope_responses = {
-            "عذراً، هذا السؤال خارج نطاق محتوى الملف",
-            "Sorry, this question is outside the scope of the file content"
+        # تجهيز المراجع للنسخ
+        references_text = ""
+        if context and "references" in context and context["references"]:
+            references_text = "\n\nPage References:\n"
+            for ref in context["references"]:
+                references_text += f"• Page {ref['page']}\n"
+        
+        # إضافة أزرار التفاعل
+        interaction_buttons = {
+            "العربية": {
+                "like": "👍 أعجبني",
+                "dislike": "👎 لم يعجبني",
+                "copy": "📋 نسخ الإجابة",
+                "share": "🔗 مشاركة"
+            },
+            "English": {
+                "like": "👍 Like",
+                "dislike": "👎 Dislike",
+                "copy": "📋 Copy Answer",
+                "share": "🔗 Share"
+            }
         }
+        
+        # تحديد نص الأزرار حسب اللغة
+        buttons = interaction_buttons[language]
+        
+        # إضافة HTML للأزرار مع الأنماط
+        buttons_html = f"""
+        {get_interaction_styles()}
+        <div class="interaction-buttons">
+            <button onclick="likeAnswer()" class="btn-like">{buttons['like']}</button>
+            <button onclick="dislikeAnswer()" class="btn-dislike">{buttons['dislike']}</button>
+            <button onclick="copyAnswer()" class="btn-copy" data-full-answer="{response.content}{references_text}">{buttons['copy']}</button>
+            <button onclick="shareAnswer()" class="btn-share">{buttons['share']}</button>
+        </div>
+        
+        <script>
+        function likeAnswer() {{
+            // إضافة منطق الإعجاب
+            console.log('Liked');
+        }}
+        
+        function dislikeAnswer() {{
+            // إضافة منطق عدم الإعجاب
+            console.log('Disliked');
+        }}
+        
+        function copyAnswer() {{
+            const button = document.querySelector('.btn-copy');
+            const textToCopy = button.getAttribute('data-full-answer');
+            navigator.clipboard.writeText(textToCopy).then(() => {{
+                const originalText = button.textContent;
+                button.textContent = language === 'العربية' ? '✓ تم النسخ' : '✓ Copied';
+                setTimeout(() => button.textContent = originalText, 2000);
+            }});
+        }}
+        
+        function shareAnswer() {{
+            const text = document.querySelector('.btn-copy').getAttribute('data-full-answer');
+            if (navigator.share) {{
+                navigator.share({{
+                    title: 'Safety Answer',
+                    text: text
+                }});
+            }}
+        }}
+        </script>
+        """
         
         # تحديث الذاكرة
         if memory:
@@ -553,16 +574,11 @@ _Note: The more specific your question, the better we can help you._
                 {"output": response.content}
             )
         
-        # إذا كان الجواب يشير إلى أن السؤال خارج النطاق، لا نعرض المراجع
-        if response.content.strip() in out_of_scope_responses:
-            return {
-                "answer": response.content,
-                "references": []
-            }
-        
         return {
             "answer": response.content,
-            "references": context.get("references", [])
+            "references": context.get("references", []) if context else [],
+            "buttons_html": buttons_html,
+            "full_answer": response.content + references_text
         }
 
     except Exception as e:
