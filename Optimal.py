@@ -421,7 +421,7 @@ def create_chat_response(query, context, memory, language):
 
 يرجى طرح سؤال محدد يتعلق بمحتوى الملف.
 
-*أمثلة على الأسئلة المناسبة:*
+**أمثلة على الأسئلة المناسبة:**
 
 • "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
 
@@ -436,7 +436,7 @@ _ملاحظة: كلما كان سؤالك أكثر تحديداً، كلما ك�
 
 Please provide a specific question related to the file content.
 
-*Examples of good questions:*
+**Examples of good questions:**
 
 • "What are the safety procedures for working at height?"
 
