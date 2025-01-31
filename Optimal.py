@@ -12,6 +12,7 @@ from streamlit_mic_recorder import speech_to_text  # Import speech-to-text funct
 import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
 from datetime import datetime, timedelta
+import uuid
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -204,6 +205,38 @@ with st.sidebar:
     else:
         st.error("الرجاء إدخال مفاتيح API للمتابعة." if interface_language == "العربية" else "Please enter both API keys to proceed.")
 
+# Initialize session state variables
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+def create_new_chat():
+    """إنشاء محادثة جديدة"""
+    chat_id = str(uuid.uuid4())
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = []
+    # إنشاء ذاكرة جديدة لكل محادثة
+    new_memory = ConversationBufferMemory(
+        memory_key="history",
+        return_messages=True
+    )
+    st.session_state.chat_history[chat_id] = {
+        'messages': [],
+        'first_message': None,
+        'timestamp': datetime.now(),
+        'memory': new_memory  # تخزين الذاكرة مع المحادثة
+    }
+
+def load_chat(chat_id):
+    """تحميل محادثة محددة"""
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
+
 # Initialize the PDFSearchAndDisplay class with the default PDF file
 pdf_path = "BGC.pdf"
 pdf_searcher = PDFSearchAndDisplay()
@@ -220,65 +253,6 @@ with col1:
 with col2:
     st.title(UI_TEXTS[interface_language]['welcome_title'])
     st.write(UI_TEXTS[interface_language]['welcome_message'])
-
-# Initialize session state for chat history if not already done
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = {}
-if 'current_chat_id' not in st.session_state:
-    st.session_state.current_chat_id = None
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
-def create_new_chat():
-    """إنشاء محادثة جديدة"""
-    chat_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-    st.session_state.current_chat_id = chat_id
-    st.session_state.messages = []
-    if chat_id not in st.session_state.chat_history:
-        st.session_state.chat_history[chat_id] = {
-            'messages': [],
-            'timestamp': datetime.now(),
-            'first_message': UI_TEXTS[interface_language]['new_chat']
-        }
-    return chat_id
-
-def update_chat_title(chat_id, message):
-    """تحديث عنوان المحادثة"""
-    if chat_id in st.session_state.chat_history:
-        # تنظيف الرسالة وتقصيرها إذا كانت طويلة
-        title = message.strip().replace('\n', ' ')
-        title = title[:50] + '...' if len(title) > 50 else title
-        st.session_state.chat_history[chat_id]['first_message'] = title
-        st.rerun()
-
-def load_chat(chat_id):
-    """تحميل محادثة محددة"""
-    if chat_id in st.session_state.chat_history:
-        st.session_state.current_chat_id = chat_id
-        st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
-        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
-
-def format_chat_title(chat):
-    """تنسيق عنوان المحادثة"""
-    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
-    display_text = chat['first_message']
-    if display_text:
-        display_text = display_text[:50] + '...' if len(display_text) > 50 else display_text
-    else:
-        display_text = UI_TEXTS[interface_language]['new_chat']
-    return display_text
-
-def format_chat_date(timestamp):
-    """تنسيق تاريخ المحادثة"""
-    today = datetime.now().date()
-    chat_date = timestamp.date()
-    
-    if chat_date == today:
-        return UI_TEXTS[interface_language]['today']
-    elif chat_date == today - timedelta(days=1):
-        return UI_TEXTS[interface_language]['yesterday']
-    else:
-        return timestamp.strftime('%Y-%m-%d')
 
 # Sidebar for chat history
 with st.sidebar:
@@ -315,13 +289,6 @@ with st.sidebar:
                 use_container_width=True
             ):
                 load_chat(chat_id)
-
-# Initialize memory if not already done
-if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(
-        memory_key="history",
-        return_messages=True
-    )
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
@@ -539,17 +506,50 @@ def display_response_with_references(response, answer):
         # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
         st.chat_message("assistant").markdown(answer)
 
+def update_chat_title(chat_id, message):
+    """تحديث عنوان المحادثة"""
+    if chat_id in st.session_state.chat_history:
+        # تنظيف الرسالة وتقصيرها إذا كانت طويلة
+        title = message.strip().replace('\n', ' ')
+        title = title[:50] + '...' if len(title) > 50 else title
+        st.session_state.chat_history[chat_id]['first_message'] = title
+
+def format_chat_title(chat):
+    """تنسيق عنوان المحادثة"""
+    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
+    display_text = chat['first_message']
+    if display_text:
+        display_text = display_text[:50] + '...' if len(display_text) > 50 else display_text
+    else:
+        display_text = UI_TEXTS[interface_language]['new_chat']
+    return display_text
+
+def format_chat_date(timestamp):
+    """تنسيق تاريخ المحادثة"""
+    today = datetime.now().date()
+    chat_date = timestamp.date()
+    
+    if chat_date == today:
+        return UI_TEXTS[interface_language]['today']
+    elif chat_date == today - timedelta(days=1):
+        return UI_TEXTS[interface_language]['yesterday']
+    else:
+        return timestamp.strftime('%Y-%m-%d')
+
 def process_user_input(user_input, is_first_message=False):
     """معالجة إدخال المستخدم وإنشاء الرد"""
     try:
         # تحضير السياق من الملفات PDF
         context = get_relevant_context(query=user_input)
         
+        # استخدام الذاكرة الخاصة بالمحادثة الحالية
+        current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
+        
         # إنشاء الإجابة باستخدام Groq
         response = create_chat_response(
             user_input,
             context,
-            st.session_state.memory,
+            current_memory,  # استخدام الذاكرة الخاصة بالمحادثة
             interface_language
         )
         
@@ -570,8 +570,9 @@ def process_user_input(user_input, is_first_message=False):
         else:
             st.chat_message("assistant").markdown(response["answer"])
         
-        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة
+        # إذا كانت أول رسالة، قم بتحديث العنوان وإعادة التحميل
         if is_first_message:
+            update_chat_title(st.session_state.current_chat_id, user_input)
             st.rerun()
             
     except Exception as e:
@@ -595,7 +596,6 @@ if human_input:
     # تحديث عنوان المحادثة وإظهار الإجابة إذا كانت أول رسالة
     is_first_message = len(st.session_state.messages) == 1
     if is_first_message:
-        # تحديث عنوان المحادثة
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
     
     # تحديث سجل المحادثة
@@ -615,7 +615,6 @@ if voice_input:
     # تحديث عنوان المحادثة وإظهار الإجابة إذا كانت أول رسالة
     is_first_message = len(st.session_state.messages) == 1
     if is_first_message:
-        # تحديث عنوان المحادثة
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = voice_input
     
     # تحديث سجل المحادثة
