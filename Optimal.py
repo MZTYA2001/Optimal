@@ -487,6 +487,48 @@ def display_response_with_references(response, answer):
         # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
         st.chat_message("assistant").markdown(answer)
 
+def process_user_input(user_input, is_first_message=False):
+    """معالجة إدخال المستخدم وإنشاء الرد"""
+    try:
+        # تحضير السياق من الملفات PDF
+        context = get_relevant_context(query=user_input)
+        
+        # استخدام الذاكرة الخاصة بالمحادثة الحالية
+        current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
+        
+        # إنشاء الإجابة باستخدام Groq
+        response = create_chat_response(
+            user_input,
+            context,
+            current_memory,  # استخدام الذاكرة الخاصة بالمحادثة
+            interface_language
+        )
+        
+        # إضافة الإجابة إلى سجل المحادثة
+        assistant_message = {
+            "role": "assistant",
+            "content": response["answer"],
+            "references": response.get("references", [])
+        }
+        st.session_state.messages.append(assistant_message)
+        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
+        
+        # عرض الإجابة مع المراجع فوراً
+        if not any(phrase in response["answer"].lower() for phrase in negative_phrases):
+            st.chat_message("assistant").markdown(response["answer"])
+            if response.get("references"):
+                display_references(response)
+        else:
+            st.chat_message("assistant").markdown(response["answer"])
+        
+        # إذا كانت أول رسالة، قم بتحديث العنوان وإعادة التحميل
+        if is_first_message:
+            update_chat_title(st.session_state.current_chat_id, user_input)
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+
 # Main area for chat interface
 # Use columns to display logo and title side by side
 col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
