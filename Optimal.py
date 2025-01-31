@@ -388,7 +388,7 @@ def create_chat_response(query, context, memory, language):
     """إنشاء رد باستخدام Groq مع التحقق من وجود سياق"""
     
     # إذا لم يكن هناك سياق من الملف، نطلب من المستخدم طرح سؤال متعلق بمحتوى الملف
-    if not context:
+    if not context or not context.get("references", []):
         no_context_message = {
             "العربية": "عذراً، لا يمكنني الإجابة على هذا السؤال. الرجاء طرح سؤال يتعلق بمحتوى الملف.",
             "English": "Sorry, I cannot answer this question. Please ask a question related to the file content."
@@ -399,7 +399,10 @@ def create_chat_response(query, context, memory, language):
         }
 
     # تحضير السياق للنموذج
-    context_text = "\n".join([f"Content from page {ref['page']}: {ref['text']}" for ref in context])
+    context_text = "\n".join([
+        f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+        for ref in context.get("references", [])
+    ])
     
     # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
     if language == "العربية":
@@ -433,7 +436,7 @@ def create_chat_response(query, context, memory, language):
 
         return {
             "answer": response.content,
-            "references": context
+            "references": context.get("references", [])
         }
 
     except Exception as e:
