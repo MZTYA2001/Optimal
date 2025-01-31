@@ -220,6 +220,7 @@ with st.sidebar:
                 - Extract answers only from the numbered sections in the document (e.g., #1 Blasting & Painting, #25 Permit to Work)
                 - Choose the closest relevant answer in the document and avoid using information from distant sections unless necessary
                 - When responding, always mention the WMP number and title of the referenced section
+                - For page references, only cite the most relevant page where the answer was found. Only mention multiple pages if the question specifically requires information from different sections
 
                 2. Concise and Precise Responses
                 - Answer only what is asked, without adding unnecessary details unless explicitly requested
@@ -254,6 +255,7 @@ with st.sidebar:
                 2. Keep responses focused and document-based
                 3. Use appropriate formatting and highlighting
                 4. Match the language of the question
+                5. Only reference the most relevant page unless multiple pages are specifically needed
                 """,
                 input_variables=["context", "input"]
             )
