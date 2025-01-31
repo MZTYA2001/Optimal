@@ -411,7 +411,28 @@ def create_chat_response(query, context, memory, language):
     follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
     is_follow_up = any(phrase in query.lower() for phrase in follow_up_phrases)
     
-    # إذا كان سؤال متابعة، نستخدم السياق السابق
+    # التحقق من السؤال غير الواضح
+    unclear_question = is_follow_up and (not memory.buffer_as_messages or len(memory.buffer_as_messages) < 2)
+    
+    if unclear_question:
+        unclear_message = {
+            "العربية": """الرجاء طرح سؤال محدد يتعلق بمحتوى الملف. على سبيل المثال:
+            - "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
+            - "ما هو نظام تصريح العمل (PTW)؟"
+            - "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
+            """,
+            "English": """Please provide me with a specific question related to the content. For example:
+            - "What are the safety procedures for working at height?"
+            - "What is the Permit to Work (PTW) system?"
+            - "What are the safety requirements for confined space work?"
+            """
+        }
+        return {
+            "answer": unclear_message[language],
+            "references": []  # لا نعرض أي مراجع للأسئلة غير الواضحة
+        }
+    
+    # إذا كان سؤال متابعة واضح (مع وجود سياق سابق)، نستخدم السياق السابق
     if is_follow_up and hasattr(memory, 'buffer_as_messages') and memory.buffer_as_messages:
         last_messages = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
         if len(last_messages) >= 2:
@@ -551,7 +572,7 @@ def process_user_input(user_input, is_first_message=False):
         follow_up_phrases = ["tell me more", "what else", "explain more", "give me more details", "و بعد", "شنو بعد", "اكو شي ثاني"]
         is_follow_up = any(phrase in user_input.lower() for phrase in follow_up_phrases)
         
-        # إذا كان سؤال متابعة، استخدم السياق السابق
+        # إذا كان سؤال متابعة، نستخدم السياق السابق
         if is_follow_up and len(st.session_state.messages) >= 2:
             last_context = st.session_state.chat_history[st.session_state.current_chat_id].get('last_context')
             if last_context:
