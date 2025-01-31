@@ -492,11 +492,48 @@ def get_interaction_styles():
     .page-references h4 {
         margin: 0 0 8px 0;
         color: #666;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
     }
     
-    .page-references ul {
-        margin: 0;
-        padding-left: 20px;
+    .page-references h4::before {
+        content: '▶';
+        display: inline-block;
+        transition: transform 0.3s;
+    }
+    
+    .page-references h4.expanded::before {
+        transform: rotate(90deg);
+    }
+    
+    .references-content {
+        display: none;
+        margin-top: 10px;
+    }
+    
+    .references-content.show {
+        display: block;
+    }
+    
+    .reference-item {
+        margin-bottom: 15px;
+        padding: 10px;
+        background: white;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .reference-item p {
+        margin: 0 0 8px 0;
+        color: #333;
+    }
+    
+    .reference-item img {
+        max-width: 100%;
+        border-radius: 4px;
+        margin-top: 8px;
     }
     
     @media (max-width: 600px) {
@@ -512,9 +549,6 @@ def get_interaction_styles():
     """
 
 def create_chat_response(question, context=None, memory=None):
-    """
-    إنشاء رد على سؤال المستخدم
-    """
     try:
         # تحديد لغة السؤال
         language = detect_language(question)
@@ -591,12 +625,25 @@ def create_chat_response(question, context=None, memory=None):
             ])
             
             refs_title = "المراجع:" if language == "العربية" else "References:"
+            refs_content = "".join([
+                f'''
+                <div class="reference-item">
+                    <p>Page {ref["page"]}</p>
+                    <img src="data:image/png;base64,{ref.get('image', '')}" 
+                         alt="Page {ref['page']}" 
+                         loading="lazy"
+                         onclick="window.open(this.src)"/>
+                </div>
+                '''
+                for ref in context["references"]
+            ])
+            
             references_html = f"""
             <div class="page-references">
-                <h4>{refs_title}</h4>
-                <ul>
-                    {"".join([f'<li>Page {ref["page"]}</li>' for ref in context["references"]])}
-                </ul>
+                <h4 onclick="toggleReferences(this)">{refs_title}</h4>
+                <div class="references-content">
+                    {refs_content}
+                </div>
             </div>
             """
         
@@ -612,6 +659,12 @@ def create_chat_response(question, context=None, memory=None):
         {references_html}
         <script>
         const currentLanguage = "{language}";
+        
+        function toggleReferences(header) {{
+            header.classList.toggle('expanded');
+            const content = header.nextElementSibling;
+            content.classList.toggle('show');
+        }}
         
         function handleLike(button) {{
             const buttonsContainer = button.parentElement;
