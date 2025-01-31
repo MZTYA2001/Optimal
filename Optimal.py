@@ -417,20 +417,20 @@ def create_chat_response(query, context, memory, language):
     if unclear_question:
         unclear_message = {
             "العربية": """
-                            الرجاء طرح سؤال محدد من محتوى الملف. على سبيل المثال:
+الرجاء طرح سؤال محدد من محتوى الملف. على سبيل المثال:
 
-                            • "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
-                            • "ما هو نظام تصريح العمل (PTW)؟"
-                            • "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
-                            """,
-                                    "English": """
-                            Please provide a specific question from the file content.
+• "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
+• "ما هو نظام تصريح العمل (PTW)؟"
+• "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
+""",
+            "English": """
+Please provide a specific question from the file content.
 
-                            Examples:
-                            • "What are the safety procedures for working at height?"
-                            • "What is the Permit to Work (PTW) system?"
-                            • "What are the safety requirements for confined space work?"
-                            """
+Examples:
+• "What are the safety procedures for working at height?"
+• "What is the Permit to Work (PTW) system?"
+• "What are the safety requirements for confined space work?"
+"""
         }
         return {
             "answer": unclear_message[language],
