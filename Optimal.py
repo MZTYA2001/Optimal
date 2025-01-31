@@ -634,6 +634,14 @@ with col1:
 
 # Display the title and description in the second column
 with col2:
+    hide_streamlit_style = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        </style>
+    """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
     st.title(UI_TEXTS[interface_language]['welcome_title'])
     st.write(UI_TEXTS[interface_language]['welcome_message'])
 
