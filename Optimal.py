@@ -222,41 +222,41 @@ with st.sidebar:
                 - Choose the closest relevant answer in the document and avoid using information from distant sections unless necessary
                 - When responding, always mention the WMP number and title of the referenced section
                 - For page references, only cite the most relevant page where the answer was found. Only mention multiple pages if the question specifically requires information from different sections
+                - DO NOT provide any information that is not explicitly stated in the document
+                - If a question cannot be answered using the document content, DO NOT provide an answer or alternatives
 
-                2. Concise and Precise Responses
+                2. Handling Out-of-Scope Questions
+                - If a question falls outside the content of the uploaded document, respond with ONLY:
+                  العربية: "عذراً، هذا السؤال خارج نطاق محتوى الملف."
+                  English: "Sorry, this question is outside the scope of the file content."
+                - DO NOT attempt to answer questions that are not covered in the document
+                - DO NOT suggest alternative answers or provide general knowledge
+
+                3. Concise and Precise Responses
                 - Answer only what is asked, without adding unnecessary details unless explicitly requested
                 - Avoid lengthy explanations or including information not found in the document
-
-                3. Logical Industry-Based Reasoning (When Necessary)
-                - If no direct answer is available, use internal industry knowledge to provide a logical, best-practice-based response
-                - Clearly indicate when an answer is based on reasoning rather than direct document references
+                - Keep responses focused on the specific document content being referenced
 
                 4. Handling Unclear or Context-Dependent Questions
-                - If a question is unclear or vague, do not respond
-                - If a question requires prior context that is missing, reply: "It seems your question relies on prior context that is not available. Could you please clarify so I can assist you more accurately? 😊"
+                - If a question is unclear or vague, respond with example questions from the document content
+                - If a question requires prior context that is missing, ask for clarification
+                - DO NOT make assumptions or provide general information
 
-                5. Ignoring Out-of-Scope Questions
-                - If a question falls outside the content of the uploaded document, do not respond at all
-
-                6. Structured and Clear Formatting
-                - Use subheadings and numbering to organize responses clearly
-                - Highlight key industry terms such as (PTW, JHA, LSR) for better readability
-
-                7. Language Adaptation
+                5. Language Adaptation
                 - Respond in English, Modern Standard Arabic, or Iraqi Arabic, depending on the language of the question
                 - If the question is in Iraqi Arabic, provide a simple and understandable response while maintaining technical accuracy
+                - Maintain the same strict adherence to document content regardless of language used
 
                 Context:
                 {context}
 
                 Question: {input}
 
-                Remember to:
-                1. Always cite the WMP number and section title
-                2. Keep responses focused and document-based
-                3. Use appropriate formatting and highlighting
-                4. Match the language of the question
-                5. Only reference the most relevant page unless multiple pages are specifically needed
+                Remember:
+                1. ONLY use information explicitly stated in the document
+                2. If information is not in the document, DO NOT provide an answer
+                3. DO NOT add any external knowledge or suggestions
+                4. Only show page references when providing actual content from the document
                 """,
                 input_variables=["context", "input"]
             )
@@ -416,12 +416,12 @@ def create_chat_response(query, context, memory, language):
     
     if unclear_question:
         unclear_message = {
-            "العربية": """الرجاء طرح سؤال محدد يتعلق بمحتوى الملف. على سبيل المثال:
+            "العربية": """الرجاء طرح سؤال محدد من محتوى الملف. على سبيل المثال:
             - "ما هي إجراءات السلامة للعمل في الأماكن المرتفعة؟"
             - "ما هو نظام تصريح العمل (PTW)؟"
             - "ما هي متطلبات السلامة للعمل في الأماكن المغلقة؟"
             """,
-            "English": """Please provide me with a specific question related to the content. For example:
+            "English": """Please provide a specific question from the file content. For example:
             - "What are the safety procedures for working at height?"
             - "What is the Permit to Work (PTW) system?"
             - "What are the safety requirements for confined space work?"
@@ -436,9 +436,19 @@ def create_chat_response(query, context, memory, language):
     if is_follow_up and hasattr(memory, 'buffer_as_messages') and memory.buffer_as_messages:
         last_messages = memory.buffer_as_messages[-2:]  # آخر تبادل (سؤال وجواب)
         if len(last_messages) >= 2:
-            # استخدام نفس السياق من السؤال السابق
             last_question = last_messages[-2].content if hasattr(last_messages[-2], 'content') else str(last_messages[-2])
             last_answer = last_messages[-1].content if hasattr(last_messages[-1], 'content') else str(last_messages[-1])
+            
+            # التحقق من وجود مراجع في السياق السابق
+            if not context or not context.get("references", []):
+                out_of_scope_message = {
+                    "العربية": "عذراً، هذا السؤال خارج نطاق محتوى الملف.",
+                    "English": "Sorry, this question is outside the scope of the file content."
+                }
+                return {
+                    "answer": out_of_scope_message[language],
+                    "references": []
+                }
             
             context_text = "\n".join([
                 f"Previous Question: {last_question}\n"
@@ -449,14 +459,14 @@ def create_chat_response(query, context, memory, language):
                 for ref in context.get("references", [])
             ])
     else:
-        # إذا لم يكن هناك سياق من الملف، نطلب من المستخدم طرح سؤال متعلق بمحتوى الملف
+        # إذا لم يكن هناك سياق من الملف، نعتبر السؤال خارج النطاق
         if not context or not context.get("references", []):
-            no_context_message = {
-                "العربية": "عذراً، لا يمكنني الإجابة على هذا السؤال. الرجاء طرح سؤال يتعلق بمحتوى الملف.",
-                "English": "Sorry, I cannot answer this question. Please ask a question related to the file content."
+            out_of_scope_message = {
+                "العربية": "عذراً، هذا السؤال خارج نطاق محتوى الملف.",
+                "English": "Sorry, this question is outside the scope of the file content."
             }
             return {
-                "answer": no_context_message[language],
+                "answer": out_of_scope_message[language],
                 "references": []
             }
 
@@ -468,19 +478,19 @@ def create_chat_response(query, context, memory, language):
     
     # بناء المطالبة مع التأكيد على استخدام محتوى الملف فقط
     if language == "العربية":
-        system_prompt = """أنت مساعد ذكي يجيب على الأسئلة باللغة العربية فقط من محتوى الملف المقدم.
-        - استخدم السياق المعطى فقط للإجابة على الأسئلة.
-        - لا تستخدم أي معلومات خارجية أو معرفة سابقة.
-        - إذا كان السؤال خارج نطاق السياق المعطى، اطلب من المستخدم طرح سؤال يتعلق بمحتوى الملف.
-        - قدم إجابات دقيقة ومختصرة مبنية فقط على المحتوى المتوفر.
-        - عند طلب المزيد من المعلومات، قم بتوسيع الإجابة السابقة باستخدام السياق المتوفر."""
+        system_prompt = """أنت مساعد متخصص يجيب فقط باستخدام المحتوى الموجود في الملف.
+        - استخدم فقط المعلومات الموجودة في السياق المقدم.
+        - لا تقدم أي معلومات غير موجودة في الملف.
+        - لا تستخدم أي معرفة خارجية أو اقتراحات بديلة.
+        - إذا كان السؤال خارج نطاق محتوى الملف، قل فقط: "عذراً، هذا السؤال خارج نطاق محتوى الملف."
+        - عند طلب المزيد من المعلومات، استخدم فقط المحتوى المتوفر في السياق."""
     else:
-        system_prompt = """You are an intelligent assistant that only answers questions from the provided file content in English.
-        - Use only the given context to answer questions.
-        - Do not use any external information or prior knowledge.
-        - If the question is outside the scope of the given context, ask the user to pose a question related to the file content.
-        - Provide accurate and concise answers based only on the available content.
-        - When asked for more information, expand on the previous answer using the available context."""
+        system_prompt = """You are a specialized assistant that only answers using the file content.
+        - Use only the information present in the provided context.
+        - Do not provide any information not found in the file.
+        - Do not use any external knowledge or alternative suggestions.
+        - If the question is outside the file content scope, only say: "Sorry, this question is outside the scope of the file content."
+        - When asked for more information, use only the content available in the context."""
 
     # إرسال السياق والسؤال
     messages = [
