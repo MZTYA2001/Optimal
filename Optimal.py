@@ -425,6 +425,7 @@ def get_interaction_styles():
         display: flex;
         gap: 10px;
         margin-top: 15px;
+        margin-bottom: 15px;
         flex-wrap: wrap;
     }
     
@@ -445,8 +446,9 @@ def get_interaction_styles():
         color: #2e7d32;
     }
     
-    .btn-like:hover {
-        background-color: #c8e6c9;
+    .btn-like:hover, .btn-like.active {
+        background-color: #2e7d32;
+        color: white;
     }
     
     .btn-dislike {
@@ -454,8 +456,9 @@ def get_interaction_styles():
         color: #c62828;
     }
     
-    .btn-dislike:hover {
-        background-color: #ffcdd2;
+    .btn-dislike:hover, .btn-dislike.active {
+        background-color: #c62828;
+        color: white;
     }
     
     .btn-copy {
@@ -463,8 +466,9 @@ def get_interaction_styles():
         color: #1565c0;
     }
     
-    .btn-copy:hover {
-        background-color: #bbdefb;
+    .btn-copy:hover, .btn-copy.active {
+        background-color: #1565c0;
+        color: white;
     }
     
     .btn-share {
@@ -472,8 +476,27 @@ def get_interaction_styles():
         color: #6a1b9a;
     }
     
-    .btn-share:hover {
-        background-color: #e1bee7;
+    .btn-share:hover, .btn-share.active {
+        background-color: #6a1b9a;
+        color: white;
+    }
+    
+    .page-references {
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #f5f5f5;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .page-references h4 {
+        margin: 0 0 8px 0;
+        color: #666;
+    }
+    
+    .page-references ul {
+        margin: 0;
+        padding-left: 20px;
     }
     
     @media (max-width: 600px) {
@@ -492,55 +515,30 @@ def create_chat_response(question, context=None, memory=None):
     """
     إنشاء رد على سؤال المستخدم
     """
-    # تحديد لغة السؤال
-    language = detect_language(question)
-    
-    # بناء المطالبة العامة مع دعم اللغتين
-    system_prompt = """You are a specialized assistant that answers using only the file content.
-    - Detect the question language and respond in the same language (Arabic/English)
-    - Use only the information present in the provided context
-    - Do not provide any information not found in the file
-    - Do not use any external knowledge or alternative suggestions
-    - If the question is unclear or too general, respond with:
-      - For Arabic: "نحتاج إلى سؤال أكثر تحديداً. يمكنك أن تسأل عن:
-        • إجراءات السلامة المحددة (مثل: العمل في المرتفعات، الأماكن المغلقة)
-        • متطلبات تصاريح العمل
-        • معدات الحماية الشخصية
-        • إجراءات الطوارئ"
-      - For English: "We need a more specific question. You can ask about:
-        • Specific safety procedures (e.g., working at heights, confined spaces)
-        • Work permit requirements
-        • Personal protective equipment
-        • Emergency procedures"
-    - When asked for more information, use only the content available in the context"""
-    
     try:
-        # تحضير السياق
-        if context and context.get("references"):
-            context_text = "\n".join([
-                f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
-                for ref in context.get("references", [])
-            ])
-        else:
-            context_text = ""
+        # تحديد لغة السؤال
+        language = detect_language(question)
         
-        # إعداد الرسائل للنموذج
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
-        ]
+        # بناء المطالبة العامة مع دعم اللغتين
+        system_prompt = """You are a specialized assistant that answers using only the file content.
+        - Detect the question language and respond in the same language (Arabic/English)
+        - Use only the information present in the provided context
+        - Do not provide any information not found in the file
+        - Do not use any external knowledge or alternative suggestions
+        - If the question is unclear or too general, respond with:
+          - For Arabic: "نحتاج إلى سؤال أكثر تحديداً. يمكنك أن تسأل عن:
+            • إجراءات السلامة المحددة (مثل: العمل في المرتفعات، الأماكن المغلقة)
+            • متطلبات تصاريح العمل
+            • معدات الحماية الشخصية
+            • إجراءات الطوارئ"
+          - For English: "We need a more specific question. You can ask about:
+            • Specific safety procedures (e.g., working at heights, confined spaces)
+            • Work permit requirements
+            • Personal protective equipment
+            • Emergency procedures"
+        - When asked for more information, use only the content available in the context"""
         
-        # إنشاء الإجابة
-        response = llm.invoke(messages)
-        
-        # تجهيز المراجع للنسخ
-        references_text = ""
-        if context and "references" in context and context["references"]:
-            references_text = "\n\nPage References:\n"
-            for ref in context["references"]:
-                references_text += f"• Page {ref['page']}\n"
-        
-        # إضافة أزرار التفاعل
+        # نصوص الأزرار حسب اللغة
         interaction_buttons = {
             "العربية": {
                 "like": "👍 أعجبني",
@@ -559,43 +557,96 @@ def create_chat_response(question, context=None, memory=None):
         # تحديد نص الأزرار حسب اللغة
         buttons = interaction_buttons[language]
         
-        # إضافة HTML للأزرار مع الأنماط
+        # تحضير السياق والذاكرة
+        if memory and memory.buffer_as_messages:
+            # إضافة السياق السابق من الذاكرة
+            previous_messages = memory.buffer_as_messages[-2:]  # آخر سؤال وجواب
+            context_text = "Previous conversation:\n"
+            for msg in previous_messages:
+                context_text += f"{msg.type}: {msg.content}\n"
+            
+            if context and context.get("references"):
+                context_text += "\nCurrent context:\n" + "\n".join([
+                    f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+                    for ref in context.get("references", [])
+                ])
+        else:
+            context_text = "\n".join([
+                f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+                for ref in context.get("references", []) if context
+            ])
+        
+        # إنشاء الإجابة
+        response = llm.invoke(messages)
+        
+        # تجهيز المراجع
+        references_html = ""
+        if context and context.get("references"):
+            refs_title = "المراجع:" if language == "العربية" else "References:"
+            references_html = f"""
+            <div class="page-references">
+                <h4>{refs_title}</h4>
+                <ul>
+                    {"".join([f'<li>Page {ref["page"]}</li>' for ref in context["references"]])}
+                </ul>
+            </div>
+            """
+        
+        # إضافة أزرار التفاعل مع JavaScript للتحكم في الحالة
         buttons_html = f"""
         {get_interaction_styles()}
-        <div class="interaction-buttons">
-            <button onclick="likeAnswer()" class="btn-like">{buttons['like']}</button>
-            <button onclick="dislikeAnswer()" class="btn-dislike">{buttons['dislike']}</button>
-            <button onclick="copyAnswer()" class="btn-copy" data-full-answer="{response.content}{references_text}">{buttons['copy']}</button>
-            <button onclick="shareAnswer()" class="btn-share">{buttons['share']}</button>
+        <div class="interaction-buttons" id="buttons_{id(response)}">
+            <button onclick="handleLike(this)" class="btn-like">{buttons['like']}</button>
+            <button onclick="handleDislike(this)" class="btn-dislike">{buttons['dislike']}</button>
+            <button onclick="handleCopy(this)" class="btn-copy" data-full-answer="{response.content}{references_text}">{buttons['copy']}</button>
+            <button onclick="handleShare(this)" class="btn-share">{buttons['share']}</button>
         </div>
-        
+        {references_html}
         <script>
-        function likeAnswer() {{
-            // إضافة منطق الإعجاب
-            console.log('Liked');
+        function handleLike(button) {{
+            const buttonsContainer = button.parentElement;
+            const dislikeButton = buttonsContainer.querySelector('.btn-dislike');
+            
+            // إزالة التنشيط من زر عدم الإعجاب
+            dislikeButton.classList.remove('active');
+            
+            // تبديل حالة زر الإعجاب
+            button.classList.toggle('active');
         }}
         
-        function dislikeAnswer() {{
-            // إضافة منطق عدم الإعجاب
-            console.log('Disliked');
+        function handleDislike(button) {{
+            const buttonsContainer = button.parentElement;
+            const likeButton = buttonsContainer.querySelector('.btn-like');
+            
+            // إزالة التنشيط من زر الإعجاب
+            likeButton.classList.remove('active');
+            
+            // تبديل حالة زر عدم الإعجاب
+            button.classList.toggle('active');
         }}
         
-        function copyAnswer() {{
-            const button = document.querySelector('.btn-copy');
+        function handleCopy(button) {{
             const textToCopy = button.getAttribute('data-full-answer');
             navigator.clipboard.writeText(textToCopy).then(() => {{
+                button.classList.add('active');
                 const originalText = button.textContent;
                 button.textContent = language === 'العربية' ? '✓ تم النسخ' : '✓ Copied';
-                setTimeout(() => button.textContent = originalText, 2000);
+                setTimeout(() => {{
+                    button.classList.remove('active');
+                    button.textContent = originalText;
+                }}, 2000);
             }});
         }}
         
-        function shareAnswer() {{
-            const text = document.querySelector('.btn-copy').getAttribute('data-full-answer');
+        function handleShare(button) {{
+            const textToShare = button.parentElement.querySelector('.btn-copy').getAttribute('data-full-answer');
             if (navigator.share) {{
                 navigator.share({{
                     title: 'Safety Answer',
-                    text: text
+                    text: textToShare
+                }}).then(() => {{
+                    button.classList.add('active');
+                    setTimeout(() => button.classList.remove('active'), 2000);
                 }});
             }}
         }}
@@ -612,8 +663,7 @@ def create_chat_response(question, context=None, memory=None):
         return {
             "answer": response.content,
             "references": context.get("references", []) if context else [],
-            "buttons_html": buttons_html,
-            "full_answer": response.content + references_text
+            "buttons_html": buttons_html
         }
 
     except Exception as e:
