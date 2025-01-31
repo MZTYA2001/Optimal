@@ -495,7 +495,42 @@ def create_chat_response(question, context=None, memory=None):
     # تحديد لغة السؤال
     language = detect_language(question)
     
+    # بناء المطالبة العامة مع دعم اللغتين
+    system_prompt = """You are a specialized assistant that answers using only the file content.
+    - Detect the question language and respond in the same language (Arabic/English)
+    - Use only the information present in the provided context
+    - Do not provide any information not found in the file
+    - Do not use any external knowledge or alternative suggestions
+    - If the question is unclear or too general, respond with:
+      - For Arabic: "نحتاج إلى سؤال أكثر تحديداً. يمكنك أن تسأل عن:
+        • إجراءات السلامة المحددة (مثل: العمل في المرتفعات، الأماكن المغلقة)
+        • متطلبات تصاريح العمل
+        • معدات الحماية الشخصية
+        • إجراءات الطوارئ"
+      - For English: "We need a more specific question. You can ask about:
+        • Specific safety procedures (e.g., working at heights, confined spaces)
+        • Work permit requirements
+        • Personal protective equipment
+        • Emergency procedures"
+    - When asked for more information, use only the content available in the context"""
+    
     try:
+        # تحضير السياق
+        if context and context.get("references"):
+            context_text = "\n".join([
+                f"Content from page {ref.get('page', 'N/A')}: {ref.get('content', '')}"
+                for ref in context.get("references", [])
+            ])
+        else:
+            context_text = ""
+        
+        # إعداد الرسائل للنموذج
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
+        ]
+        
+        # إنشاء الإجابة
         response = llm.invoke(messages)
         
         # تجهيز المراجع للنسخ
