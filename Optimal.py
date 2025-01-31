@@ -7,10 +7,18 @@ import re
 import base64
 from datetime import datetime, timedelta
 from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import fitz  # PyMuPDF
 import pdfplumber
 from PIL import Image
 import io
+
+try:
+    from streamlit_mic_recorder import speech_to_text
+    VOICE_INPUT_AVAILABLE = True
+except ImportError:
+    VOICE_INPUT_AVAILABLE = False
+    st.warning("ميزة الإدخال الصوتي غير متوفرة. يرجى تثبيت مكتبة streamlit-mic-recorder.")
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -328,16 +336,19 @@ with st.sidebar:
                     st.session_state.vectors = None
 
         # Microphone button in the sidebar
-        st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
-        input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
-        voice_input = speech_to_text(
-            start_prompt="🎤",
-            stop_prompt="⏹️ إيقاف" if interface_language == "العربية" else "⏹️ Stop",
-            language=input_lang_code,  # Language (en for English, ar for Arabic)
-            use_container_width=True,
-            just_once=True,
-            key="mic_button",
-        )
+        if VOICE_INPUT_AVAILABLE:
+            st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
+            input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
+            voice_input = speech_to_text(
+                start_prompt="🎤",
+                stop_prompt="⏹️ إيقاف" if interface_language == "العربية" else "⏹️ Stop",
+                language=input_lang_code,  # Language (en for English, ar for Arabic)
+                use_container_width=True,
+                just_once=True,
+                key="mic_button",
+            )
+        else:
+            voice_input = None
 
     else:
         st.error("الرجاء إدخال مفاتيح API للمتابعة." if interface_language == "العربية" else "Please enter both API keys to proceed.")
@@ -1037,7 +1048,7 @@ for message in st.session_state.messages:
 handle_user_input()
 
 # معالجة الإدخال الصوتي
-if voice_input:
+if VOICE_INPUT_AVAILABLE and voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
     
