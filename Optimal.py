@@ -119,6 +119,72 @@ class PDFSearchAndDisplay:
             st.error(f"{UI_TEXTS[interface_language]['error_pdf']}{str(e)}")
         return screenshots
 
+# Initialize session state variables
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+def format_chat_date(timestamp):
+    """تنسيق تاريخ المحادثة"""
+    today = datetime.now().date()
+    chat_date = timestamp.date()
+    
+    if chat_date == today:
+        return UI_TEXTS[interface_language]['today']
+    elif chat_date == today - timedelta(days=1):
+        return UI_TEXTS[interface_language]['yesterday']
+    else:
+        return timestamp.strftime('%Y-%m-%d')
+
+def format_chat_title(chat):
+    """تنسيق عنوان المحادثة"""
+    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
+    display_text = chat['first_message']
+    if display_text:
+        display_text = display_text[:50] + '...' if len(display_text) > 50 else display_text
+    else:
+        display_text = UI_TEXTS[interface_language]['new_chat']
+    return display_text
+
+def update_chat_title(chat_id, message):
+    """تحديث عنوان المحادثة"""
+    if chat_id in st.session_state.chat_history:
+        # تنظيف الرسالة وتقصيرها إذا كانت طويلة
+        title = message.strip().replace('\n', ' ')
+        title = title[:50] + '...' if len(title) > 50 else title
+        st.session_state.chat_history[chat_id]['first_message'] = title
+
+def create_new_chat():
+    """إنشاء محادثة جديدة"""
+    chat_id = str(uuid.uuid4())
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = []
+    # إنشاء ذاكرة جديدة لكل محادثة
+    new_memory = ConversationBufferMemory(
+        memory_key="history",
+        return_messages=True
+    )
+    st.session_state.chat_history[chat_id] = {
+        'messages': [],
+        'first_message': None,
+        'timestamp': datetime.now(),
+        'memory': new_memory  # تخزين الذاكرة مع المحادثة
+    }
+
+def load_chat(chat_id):
+    """تحميل محادثة محددة"""
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
+
+# Initialize the PDFSearchAndDisplay class with the default PDF file
+pdf_path = "BGC.pdf"
+pdf_searcher = PDFSearchAndDisplay()
+
 # Sidebar configuration
 with st.sidebar:
     # Language selection dropdown
@@ -204,91 +270,6 @@ with st.sidebar:
 
     else:
         st.error("الرجاء إدخال مفاتيح API للمتابعة." if interface_language == "العربية" else "Please enter both API keys to proceed.")
-
-# Initialize session state variables
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = {}
-
-if "current_chat_id" not in st.session_state:
-    st.session_state.current_chat_id = None
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-def create_new_chat():
-    """إنشاء محادثة جديدة"""
-    chat_id = str(uuid.uuid4())
-    st.session_state.current_chat_id = chat_id
-    st.session_state.messages = []
-    # إنشاء ذاكرة جديدة لكل محادثة
-    new_memory = ConversationBufferMemory(
-        memory_key="history",
-        return_messages=True
-    )
-    st.session_state.chat_history[chat_id] = {
-        'messages': [],
-        'first_message': None,
-        'timestamp': datetime.now(),
-        'memory': new_memory  # تخزين الذاكرة مع المحادثة
-    }
-
-def load_chat(chat_id):
-    """تحميل محادثة محددة"""
-    st.session_state.current_chat_id = chat_id
-    st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
-
-# Initialize the PDFSearchAndDisplay class with the default PDF file
-pdf_path = "BGC.pdf"
-pdf_searcher = PDFSearchAndDisplay()
-
-# Main area for chat interface
-# Use columns to display logo and title side by side
-col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
-
-# Display the logo in the first column
-with col1:
-    st.image("BGC Logo Colored.svg", width=100)  # Adjust the width as needed
-
-# Display the title and description in the second column
-with col2:
-    st.title(UI_TEXTS[interface_language]['welcome_title'])
-    st.write(UI_TEXTS[interface_language]['welcome_message'])
-
-# Sidebar for chat history
-with st.sidebar:
-    # New Chat button
-    if st.button(UI_TEXTS[interface_language]['new_chat'], use_container_width=True):
-        create_new_chat()
-        st.rerun()
-    
-    st.markdown("---")
-    
-    # Display chat history
-    st.markdown(f"### {UI_TEXTS[interface_language]['previous_chats']}")
-    
-    # Group chats by date
-    chats_by_date = {}
-    for chat_id, chat_data in st.session_state.chat_history.items():
-        date = chat_data['timestamp'].date()
-        if date not in chats_by_date:
-            chats_by_date[date] = []
-        chats_by_date[date].append((chat_id, chat_data))
-    
-    # Display chats grouped by date
-    for date in sorted(chats_by_date.keys(), reverse=True):
-        chats = chats_by_date[date]
-        
-        # عرض التاريخ كعنوان
-        st.markdown(f"#### {format_chat_date(chats[0][1]['timestamp'])}")
-        
-        # عرض المحادثات تحت كل تاريخ
-        for chat_id, chat_data in sorted(chats, key=lambda x: x[1]['timestamp'], reverse=True):
-            if st.sidebar.button(
-                format_chat_title(chat_data),
-                key=f"chat_{chat_id}",
-                use_container_width=True
-            ):
-                load_chat(chat_id)
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
@@ -506,77 +487,58 @@ def display_response_with_references(response, answer):
         # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
         st.chat_message("assistant").markdown(answer)
 
-def update_chat_title(chat_id, message):
-    """تحديث عنوان المحادثة"""
-    if chat_id in st.session_state.chat_history:
-        # تنظيف الرسالة وتقصيرها إذا كانت طويلة
-        title = message.strip().replace('\n', ' ')
-        title = title[:50] + '...' if len(title) > 50 else title
-        st.session_state.chat_history[chat_id]['first_message'] = title
+# Main area for chat interface
+# Use columns to display logo and title side by side
+col1, col2 = st.columns([1, 4])  # Adjust the ratio as needed
 
-def format_chat_title(chat):
-    """تنسيق عنوان المحادثة"""
-    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
-    display_text = chat['first_message']
-    if display_text:
-        display_text = display_text[:50] + '...' if len(display_text) > 50 else display_text
-    else:
-        display_text = UI_TEXTS[interface_language]['new_chat']
-    return display_text
+# Display the logo in the first column
+with col1:
+    st.image("BGC Logo Colored.svg", width=100)  # Adjust the width as needed
 
-def format_chat_date(timestamp):
-    """تنسيق تاريخ المحادثة"""
-    today = datetime.now().date()
-    chat_date = timestamp.date()
+# Display the title and description in the second column
+with col2:
+    st.title(UI_TEXTS[interface_language]['welcome_title'])
+    st.write(UI_TEXTS[interface_language]['welcome_message'])
+
+# Sidebar for chat history
+with st.sidebar:
+    # New Chat button
+    if st.button(UI_TEXTS[interface_language]['new_chat'], use_container_width=True):
+        create_new_chat()
+        st.rerun()
     
-    if chat_date == today:
-        return UI_TEXTS[interface_language]['today']
-    elif chat_date == today - timedelta(days=1):
-        return UI_TEXTS[interface_language]['yesterday']
-    else:
-        return timestamp.strftime('%Y-%m-%d')
+    st.markdown("---")
+    
+    # Display chat history
+    st.markdown(f"### {UI_TEXTS[interface_language]['previous_chats']}")
+    
+    # Group chats by date
+    chats_by_date = {}
+    for chat_id, chat_data in st.session_state.chat_history.items():
+        date = chat_data['timestamp'].date()
+        if date not in chats_by_date:
+            chats_by_date[date] = []
+        chats_by_date[date].append((chat_id, chat_data))
+    
+    # Display chats grouped by date
+    for date in sorted(chats_by_date.keys(), reverse=True):
+        chats = chats_by_date[date]
+        
+        # عرض التاريخ كعنوان
+        st.markdown(f"#### {format_chat_date(chats[0][1]['timestamp'])}")
+        
+        # عرض المحادثات تحت كل تاريخ
+        for chat_id, chat_data in sorted(chats, key=lambda x: x[1]['timestamp'], reverse=True):
+            if st.sidebar.button(
+                format_chat_title(chat_data),
+                key=f"chat_{chat_id}",
+                use_container_width=True
+            ):
+                load_chat(chat_id)
 
-def process_user_input(user_input, is_first_message=False):
-    """معالجة إدخال المستخدم وإنشاء الرد"""
-    try:
-        # تحضير السياق من الملفات PDF
-        context = get_relevant_context(query=user_input)
-        
-        # استخدام الذاكرة الخاصة بالمحادثة الحالية
-        current_memory = st.session_state.chat_history[st.session_state.current_chat_id]['memory']
-        
-        # إنشاء الإجابة باستخدام Groq
-        response = create_chat_response(
-            user_input,
-            context,
-            current_memory,  # استخدام الذاكرة الخاصة بالمحادثة
-            interface_language
-        )
-        
-        # إضافة الإجابة إلى سجل المحادثة
-        assistant_message = {
-            "role": "assistant",
-            "content": response["answer"],
-            "references": response.get("references", [])
-        }
-        st.session_state.messages.append(assistant_message)
-        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-        
-        # عرض الإجابة مع المراجع فوراً
-        if not any(phrase in response["answer"].lower() for phrase in negative_phrases):
-            st.chat_message("assistant").markdown(response["answer"])
-            if response.get("references"):
-                display_references(response)
-        else:
-            st.chat_message("assistant").markdown(response["answer"])
-        
-        # إذا كانت أول رسالة، قم بتحديث العنوان وإعادة التحميل
-        if is_first_message:
-            update_chat_title(st.session_state.current_chat_id, user_input)
-            st.rerun()
-            
-    except Exception as e:
-        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+# Create new chat if no chat is selected
+if st.session_state.current_chat_id is None:
+    create_new_chat()
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
@@ -625,7 +587,3 @@ if voice_input:
     
     # معالجة السؤال وإظهار الإجابة
     process_user_input(voice_input, is_first_message)
-
-# Create new chat if no chat is selected
-if st.session_state.current_chat_id is None:
-    create_new_chat()
