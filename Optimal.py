@@ -732,3 +732,4 @@ if voice_input:
     
     # معالجة السؤال وإظهار الإجابة
     process_user_input(voice_input, is_first_message)
+make as much you can to functions if we can do it without errors to make easy for me to understand the code
